@@ -20,7 +20,7 @@ export type QueuedTicket = { id: string; topicId: string; title: string; choice:
 export type PairNotification = { id: string; chatId: string; title: string; text: string; at: number };
 
 const URI = process.env.NEXT_PUBLIC_SPACETIMEDB_URI ?? "ws://localhost:3010";
-const DB_NAME = process.env.NEXT_PUBLIC_SPACETIMEDB_DB ?? "agon";
+const DB_NAME = process.env.NEXT_PUBLIC_SPACETIMEDB_DB ?? "yaapi-dev";
 
 /* ---------------- connection ---------------- */
 

@@ -1,5 +1,5 @@
 /**
- * Agon — SpacetimeDB module.
+ * Yaapi — SpacetimeDB module.
  *
  * Players pick a side on a topic → join the queue → get paired with someone
  * from the other side → chat. Not everyone gets paired: a ticket waits until
@@ -13,7 +13,7 @@
 
 import { schema, table, t, SenderError, type InferSchema, type ReducerCtx } from 'spacetimedb/server';
 import { Identity } from 'spacetimedb';
-import { seed } from './seed';
+import { removeDemoData as removeDemo, seed } from './seed';
 import { classifyLogin } from './auth';
 
 /* ---------------- tables ---------------- */
@@ -30,6 +30,14 @@ const player = table(
     streak: t.u32(), // consecutive active days
     lastActiveDay: t.u32(), // days since unix epoch
     membership: t.string(),
+  }
+);
+
+/** Who may run admin reducers: the identity that first published the database. Private. */
+const admin = table(
+  { name: 'admin' },
+  {
+    identity: t.identity().primaryKey(),
   }
 );
 
@@ -160,7 +168,7 @@ const notification = table(
   }
 );
 
-const spacetimedb = schema({ player, username, category, topic, vote, ticket, chat, message, chatLike, notification });
+const spacetimedb = schema({ player, admin, username, category, topic, vote, ticket, chat, message, chatLike, notification });
 export default spacetimedb;
 
 export const ownNotifications = spacetimedb.clientVisibilityFilter.sql('SELECT * FROM notification WHERE recipient = :sender');
@@ -206,7 +214,7 @@ function requireProfile(ctx: Ctx) {
 }
 
 const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
-const RESERVED_USERNAMES = new Set(['admin', 'agon', 'support', 'help', 'mod', 'moderator', 'system', 'me', 'you', 'null', 'undefined']);
+const RESERVED_USERNAMES = new Set(['admin', 'yaapi', 'support', 'help', 'mod', 'moderator', 'system', 'me', 'you', 'null', 'undefined']);
 
 function cleanDisplayName(name: string) {
   const trimmed = name.trim().replace(/\s+/g, ' ');
@@ -311,6 +319,8 @@ function postMessage(ctx: Ctx, chatId: bigint, sender: Identity, text: string) {
 /* ---------------- lifecycle ---------------- */
 
 export const init = spacetimedb.init(ctx => {
+  // The publisher becomes the admin.
+  ctx.db.admin.insert({ identity: ctx.sender });
   seed(ctx);
 });
 
@@ -510,4 +520,17 @@ export const toggleLike = spacetimedb.reducer({ chatId: t.u64() }, (ctx, { chatI
     const p = ctx.db.player.identity.find(who);
     if (p) ctx.db.player.identity.update({ ...p, likes: Math.max(0, p.likes + delta) });
   }
+});
+
+/* ---------------- admin ---------------- */
+
+/**
+ * Deletes the seeded demo players, chats and made-up vote counts; keeps
+ * categories, topics and everything real. Admin only:
+ *   spacetime call <db> remove_demo_data --server <server>
+ */
+export const removeDemoData = spacetimedb.reducer(ctx => {
+  if (!ctx.db.admin.identity.find(ctx.sender)) throw new SenderError('Admins only');
+  if (!removeDemo(ctx)) throw new SenderError('Demo data was already removed');
+  console.info('Demo data removed');
 });

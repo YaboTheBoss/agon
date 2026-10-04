@@ -1,5 +1,5 @@
 {
-  "name": "agon",
+  "name": "yaapi",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -8,10 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "db:start": "spacetime start --listen-addr 127.0.0.1:3010",
-    "db:publish": "spacetime publish agon --server http://127.0.0.1:3010 --module-path spacetimedb --yes",
-    "db:reset": "spacetime publish agon --server http://127.0.0.1:3010 --module-path spacetimedb --delete-data=always --yes",
+    "db:publish": "spacetime publish yaapi-dev --server http://127.0.0.1:3010 --module-path spacetimedb --yes",
+    "db:reset": "spacetime publish yaapi-dev --server http://127.0.0.1:3010 --module-path spacetimedb --delete-data=always --yes",
     "db:generate": "spacetime generate --lang typescript --out-dir lib/module_bindings --module-path spacetimedb --yes",
-    "db:logs": "spacetime logs agon --server http://127.0.0.1:3010 -f"
+    "db:logs": "spacetime logs yaapi-dev --server http://127.0.0.1:3010 -f",
+    "db:publish:prod": "spacetime publish yaapi --server maincloud --module-path spacetimedb --yes",
+    "db:logs:prod": "spacetime logs yaapi --server maincloud -f"
   },
   "dependencies": {
     "next": "16.3.8",

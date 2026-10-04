@@ -1,6 +1,8 @@
 /**
  * First-publish seed: categories, demo topics, demo players and a few
- * finished/ongoing chats so the feed isn't empty.
+ * finished/ongoing chats so the feed isn't empty. `removeDemoData` undoes the
+ * fake parts (players, chats, made-up vote counts) and keeps the categories
+ * and topics.
  */
 
 import { Identity, Timestamp } from 'spacetimedb';
@@ -130,6 +132,16 @@ const CONVOS: SeedConvo[] = [
   },
 ];
 
+/** Made-up starting tallies for a demo topic. Shared by seed and removal so they cancel exactly. */
+function seededVotes(total: number, aPct: number, ePct: number) {
+  const aVotes = Math.round((total * aPct) / 100);
+  const eVotes = Math.round((total * ePct) / 100);
+  return { aVotes, bVotes: total - aVotes - eVotes, eVotes };
+}
+
+/** Demo player i (0-based) gets identity i + 1: tiny values no real (hash-derived) identity can have. */
+const demoIdentity = (i: number) => new Identity(BigInt(i + 1));
+
 export function seed(ctx: Ctx) {
   CATEGORIES.forEach((c, i) => ctx.db.category.insert({ ...c, sort: i }));
 
@@ -137,7 +149,7 @@ export function seed(ctx: Ctx) {
   // (hash-derived) ones.
   const players = new Map<string, Identity>();
   PLAYERS.forEach(([name, likes, debates, streak], i) => {
-    const identity = new Identity(BigInt(i + 1));
+    const identity = demoIdentity(i);
     players.set(name, identity);
     ctx.db.username.insert({ name: name.toLowerCase(), owner: identity });
     ctx.db.player.insert({ identity, name, username: name.toLowerCase(), online: false, likes, debates, streak, lastActiveDay: 0, membership: 'Free' });
@@ -147,8 +159,7 @@ export function seed(ctx: Ctx) {
   const now = ctx.timestamp.microsSinceUnixEpoch;
   const topics = new Map<string, bigint>();
   TOPICS.forEach(([key, title, cat, sideA, sideB, aPct, ePct, total, hot], i) => {
-    const aVotes = Math.round((total * aPct) / 100);
-    const eVotes = Math.round((total * ePct) / 100);
+    const { aVotes, bVotes, eVotes } = seededVotes(total, aPct, ePct);
     const row = ctx.db.topic.insert({
       id: 0n,
       title,
@@ -156,7 +167,7 @@ export function seed(ctx: Ctx) {
       sideA,
       sideB,
       aVotes,
-      bVotes: total - aVotes - eVotes,
+      bVotes,
       eVotes,
       hot,
       createdBy: system,
@@ -198,4 +209,42 @@ export function seed(ctx: Ctx) {
       });
     });
   });
+}
+
+/**
+ * Removes the demo players, their usernames, their chats (with messages and
+ * likes) and the made-up vote counts on the seeded topics. Real users never
+ * chat with demo players, so nothing real is touched; real votes stay.
+ * Returns false if the demo data was already removed.
+ */
+export function removeDemoData(ctx: Ctx): boolean {
+  const demo = PLAYERS.map((_, i) => demoIdentity(i));
+  if (!ctx.db.player.identity.find(demo[0])) return false;
+
+  const isDemo = (id: Identity) => demo.some(d => d.isEqual(id));
+  for (const c of [...ctx.db.chat.iter()]) {
+    if (!isDemo(c.a) && !isDemo(c.b)) continue;
+    for (const m of [...ctx.db.message.chatId.filter(c.id)]) ctx.db.message.id.delete(m.id);
+    for (const l of [...ctx.db.chatLike.iter()]) if (l.chatId === c.id) ctx.db.chatLike.id.delete(l.id);
+    ctx.db.chat.id.delete(c.id);
+  }
+  for (const id of demo) {
+    const p = ctx.db.player.identity.find(id);
+    if (p) ctx.db.username.name.delete(p.username);
+    ctx.db.player.identity.delete(id);
+  }
+
+  const system = Identity.zero();
+  for (const [, title, , , , aPct, ePct, total] of TOPICS) {
+    const tp = [...ctx.db.topic.iter()].find(t => t.title === title && t.createdBy.isEqual(system));
+    if (!tp) continue;
+    const seeded = seededVotes(total, aPct, ePct);
+    ctx.db.topic.id.update({
+      ...tp,
+      aVotes: Math.max(0, tp.aVotes - seeded.aVotes),
+      bVotes: Math.max(0, tp.bVotes - seeded.bVotes),
+      eVotes: Math.max(0, tp.eVotes - seeded.eVotes),
+    });
+  }
+  return true;
 }
