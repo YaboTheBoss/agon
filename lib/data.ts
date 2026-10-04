@@ -7,7 +7,7 @@ export type Mode = "casual" | "comp";
 export type Side = "a" | "b";
 /** What you can pick on a poll: one of the two sides, or "either". */
 export type Choice = Side | "either";
-/** Only challenge (comp) chats have a live/ended state. Casual chats are just chats. */
+/** Live / ended. Comp debates end after judging; casual chats end 2 days after their first message. */
 export type CompStatus = "live" | "ended";
 export type CompPhase = "opening" | "engagement" | "closing" | "judging" | "ended";
 
@@ -41,10 +41,16 @@ export type Convo = {
   summary: string;
   likes: number;
   mode: Mode;
-  status?: CompStatus; // comp only
+  status?: CompStatus;
   scores?: { a: number; b: number }; // comp only
   messages: ChatMessage[];
   lastAt: number;
+  /** You're one of the two players (spectator ranking leaves these out). */
+  mine?: boolean;
+  /** A comp debate with a finished judging result. */
+  hasResult?: boolean;
+  /** Why the View yaaps feed shows it (set by rankConvos). */
+  reason?: string;
 };
 
 /** A conversation YOU are in (the typing view). */
@@ -55,7 +61,7 @@ export type MyChat = {
   opponent: string;
   mySide: Side;
   mode: Mode;
-  status?: CompStatus; // comp only
+  status?: CompStatus;
   scores?: { me: number; them: number }; // comp only
   turn: "me" | "them";
   phase?: CompPhase;

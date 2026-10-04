@@ -8,13 +8,13 @@
  */
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import type { Choice, Convo, Mode, Topic } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { AISummary, Avatar, Icon, Loading, Logo, ModeTag, PairingOverlay, SignInDialog, StatusChip, card, displayFont, press, usePairing } from "@/components/ui";
 import { TopicCard } from "@/components/TopicCard";
-import { requestTopicTagging } from "@/lib/tagging/client";
+import { requestAiUpkeep, requestTopicTagging } from "@/lib/tagging/client";
 
 type Tab = "start" | "convos";
 
@@ -59,22 +59,83 @@ function RankedTopics({ onPick }: { onPick: (t: Topic, choice: Choice) => void }
   );
 }
 
+/** How long a conversation card must be at least half on screen to count as seen. */
+const SEEN_AFTER_MS = 1_000;
+
+/**
+ * View yaaps: casual and comp conversations in personalised order, frozen when
+ * the tab opens (like the topic feed).
+ */
+function RankedConvos() {
+  const { convoFeed } = useStore();
+  const { token } = useAuth();
+  const [order] = useState(() => convoFeed.map((c) => c.id));
+  const byId = new Map(convoFeed.map((c) => [c.id, c]));
+  const list = order.flatMap((id) => byId.get(id) ?? []);
+  // Lets finished conversations get their AI summary (throttled to every 5 min).
+  useEffect(() => requestAiUpkeep(token), [token]);
+  if (list.length === 0) {
+    return <li className="text-center text-sm font-semibold text-[#5E5A72]">No chats to watch right now.</li>;
+  }
+  return (
+    <>
+      {list.map((c) => (
+        <ConvoCard key={c.id} c={c} />
+      ))}
+    </>
+  );
+}
+
 function ConvoCard({ c }: { c: Convo }) {
-  const t = useStore().topicById.get(c.topicId);
+  const { topicById, actions } = useStore();
+  const t = topicById.get(c.topicId);
+  const ref = useRef<HTMLLIElement>(null);
+  const { reportConvoImpression } = actions;
+
+  // Report "seen" to the recommender after the card is half visible for a second.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          timer = setTimeout(() => {
+            reportConvoImpression(c.id);
+            observer.disconnect();
+          }, SEEN_AFTER_MS);
+        } else if (timer) {
+          clearTimeout(timer);
+        }
+      },
+      { threshold: 0.5 }
+    );
+    observer.observe(el);
+    return () => {
+      if (timer) clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [c.id, reportConvoImpression]);
+
   if (!t) return null;
   return (
-    <li>
+    <li ref={ref}>
       <Link href={`/convos/${c.id}`} className={`${card} ${press} block p-4`}>
         <div className="mb-2 flex items-center gap-2">
           <ModeTag mode={c.mode} />
-          {/* only challenge chats are live / ended */}
-          {c.mode === "comp" && c.status && <StatusChip status={c.status} />}
+          {c.status && <StatusChip status={c.status} />}
           {c.mode === "comp" && c.scores && (
             <span className="text-xs font-extrabold tabular-nums text-[#1E1B2E]">
               {c.scores.a}–{c.scores.b}
             </span>
           )}
-          <span className="ml-auto flex items-center gap-1 text-xs font-extrabold text-[#1E1B2E]">
+          {c.reason && (
+            <span className="flex min-w-0 items-center gap-1 truncate text-xs font-semibold text-[#5E5A72]">
+              <Icon name="sparkle" className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{c.reason}</span>
+            </span>
+          )}
+          <span className="ml-auto flex shrink-0 items-center gap-1 text-xs font-extrabold text-[#1E1B2E]">
             <Icon name="heart" className="h-4 w-4 text-[#D6336C]" /> {c.likes}
           </span>
         </div>
@@ -86,7 +147,8 @@ function ConvoCard({ c }: { c: Convo }) {
           <Avatar name={c.b} size={28} color="#FFB27A" />
           <span className="truncate">{c.b} · {t.sideB}</span>
         </div>
-        {c.summary ? (
+        {/* AI summaries belong to finished conversations only. */}
+        {c.status === "ended" && c.summary ? (
           <AISummary text={c.summary} />
         ) : (
           <p className="truncate text-sm text-[#5E5A72]">“{c.messages.at(-1)?.text}”</p>
@@ -188,12 +250,11 @@ export default function FeedPage() {
   const [mode, setMode] = useState<Mode>("casual");
   const [creating, setCreating] = useState(false);
   const { pairing, startPairing, cancelPairing } = usePairing();
-  const { ready, feedReady, convos: allConvos } = useStore();
+  const { ready, feedReady, convoFeedReady } = useStore();
   const { status } = useAuth();
   const signedIn = status === "signed-in";
   const [signingIn, setSigningIn] = useState<string | null>(null);
 
-  const convos = allConvos.filter((c) => c.mode === mode);
 
   return (
     <>
@@ -211,7 +272,8 @@ export default function FeedPage() {
                 Sign in
               </button>
             )}
-            <ModeSwitch mode={mode} setMode={setMode} />
+            {/* Casual/Comp picks how you play; View yaaps shows both. */}
+            {tab === "start" && <ModeSwitch mode={mode} setMode={setMode} />}
           </div>
         </div>
       </header>
@@ -255,12 +317,10 @@ export default function FeedPage() {
           ) : (
             <>
               <p className="mb-3 text-sm font-semibold text-[#5E5A72]">
-                Showing {mode === "comp" ? "Comp" : "Casual"} chats. Tap one to read it all.
+                Debates happening now and finished ones, picked for you. Tap one to read it all.
               </p>
               <ul className="space-y-4">
-                {convos.map((c) => (
-                  <ConvoCard key={c.id} c={c} />
-                ))}
+                {convoFeedReady ? <RankedConvos /> : <Loading />}
               </ul>
             </>
           )}

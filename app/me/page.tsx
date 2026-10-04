@@ -28,6 +28,7 @@ function ChatStatus({ c }: { c: MyChat }) {
       </span>
     );
   }
+  if (c.status === "ended") return <StatusChip status="ended" />;
   return c.turn === "me" ? (
     <span className="rounded-full border-2 border-[#1E1B2E] bg-[#FFD43B] px-2.5 py-0.5 text-xs font-extrabold">Your turn</span>
   ) : (

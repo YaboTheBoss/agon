@@ -75,7 +75,7 @@ export default function TopicPage() {
                 </span>
                 <span className="flex shrink-0 flex-col items-end gap-1">
                   <span className="flex items-center gap-1">
-                    {c.mode === "comp" && c.status && <StatusChip status={c.status} />}
+                    {c.status && <StatusChip status={c.status} />}
                     <ModeTag mode={c.mode} />
                   </span>
                   <span className="flex items-center gap-1 text-xs font-extrabold">

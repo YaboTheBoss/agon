@@ -24,14 +24,15 @@ export default function ConvoPage() {
   const topic = convo ? topicById.get(convo.topicId) : undefined;
   const { pairing, startPairing, cancelPairing } = usePairing();
 
-  // Opening a conversation counts as interest in its topic; staying 20 s counts as reading it.
-  const topicId = convo?.topicId;
+  // Opening a conversation (and staying 20 s to read it) is recorded for this
+  // conversation and counts as interest in its topic.
+  const convoId = convo?.id;
   useEffect(() => {
-    if (!canTrack || !topicId) return;
-    actions.trackEvent(topicId, "open");
-    const read = setTimeout(() => actions.trackEvent(topicId, "read"), 20_000);
+    if (!canTrack || !convoId) return;
+    actions.trackConvoEvent(convoId, "open");
+    const read = setTimeout(() => actions.trackConvoEvent(convoId, "read"), 20_000);
     return () => clearTimeout(read);
-  }, [canTrack, topicId, actions]);
+  }, [canTrack, convoId, actions]);
   const { status } = useAuth();
   const [askSignIn, setAskSignIn] = useState(false);
 
@@ -87,7 +88,7 @@ export default function ConvoPage() {
           </div>
         )}
 
-        {convo.summary && <AISummary text={convo.summary} />}
+        {convo.status === "ended" && convo.summary && <AISummary text={convo.summary} />}
 
         {/* transcript */}
         <ol className="space-y-3" aria-label="Conversation">
