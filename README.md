@@ -1,4 +1,4 @@
-# Agon — Debate Battleground
+# Yaapi — Debate Battleground
 
 Pick a side on a topic, get paired with someone from the other side, and argue (nicely).
 Next.js frontend + [SpacetimeDB](https://spacetimedb.com) backend.

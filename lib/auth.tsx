@@ -16,7 +16,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
-const TOKEN_KEY = "agon/google_id_token";
+const TOKEN_KEY = "yaapi/google_id_token";
 const SILENT_REFRESH_TIMEOUT_MS = 4000;
 const GIS_SRC = "https://accounts.google.com/gsi/client";
 

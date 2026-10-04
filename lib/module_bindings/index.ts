@@ -39,6 +39,7 @@ import CreateTopicReducer from "./create_topic_reducer";
 import DismissNotificationsReducer from "./dismiss_notifications_reducer";
 import JoinQueueReducer from "./join_queue_reducer";
 import LeaveQueueReducer from "./leave_queue_reducer";
+import RemoveDemoDataReducer from "./remove_demo_data_reducer";
 import SendMessageReducer from "./send_message_reducer";
 import SetNameReducer from "./set_name_reducer";
 import ToggleLikeReducer from "./toggle_like_reducer";
@@ -216,6 +217,7 @@ const reducersSchema = __reducers(
   __reducerSchema("dismiss_notifications", DismissNotificationsReducer),
   __reducerSchema("join_queue", JoinQueueReducer),
   __reducerSchema("leave_queue", LeaveQueueReducer),
+  __reducerSchema("remove_demo_data", RemoveDemoDataReducer),
   __reducerSchema("send_message", SendMessageReducer),
   __reducerSchema("set_name", SetNameReducer),
   __reducerSchema("toggle_like", ToggleLikeReducer),
