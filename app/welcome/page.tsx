@@ -12,7 +12,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
-import { Avatar, Icon, Loading, SignInCard, card, displayFont, press } from "@/components/ui";
+import { Avatar, Icon, Loading, Logo, SignInCard, card, displayFont, press } from "@/components/ui";
 
 const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
 
@@ -99,10 +99,9 @@ function SetupForm({ googleName }: { googleName: string }) {
 
   return (
     <main className="mx-auto max-w-md px-4 pb-10 pt-8">
-      <p className={`${displayFont} text-[30px] leading-none`}>
-        Welcome to Debate
-        <span className="ml-1 inline-block -rotate-3 rounded-lg border-2 border-[#1E1B2E] bg-[#FFD43B] px-1.5 py-0.5 text-[22px]">Battle</span>
-      </p>
+      <h1 className={`${displayFont} flex items-center gap-2 text-[30px] leading-none`}>
+        Welcome to <Logo className="text-[28px]" />
+      </h1>
       <p className="mt-2 text-sm font-semibold text-[#5E5A72]">Set up your profile. This is how other players will see you.</p>
 
       <form onSubmit={submit} className={`${card} mt-6 space-y-4 p-5`} noValidate>

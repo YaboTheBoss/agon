@@ -58,6 +58,7 @@ const PATHS: Record<string, string[]> = {
   food: ["M12 3 3 20c6 2 12 2 18 0z", "M10 12h.01", "M14 15h.01", "M12 8h.01"],
   chip: ["M7 7h10v10H7z", "M9 2v3", "M15 2v3", "M9 19v3", "M15 19v3", "M2 9h3", "M2 15h3", "M19 9h3", "M19 15h3"],
   cap: ["M2 9l10-5 10 5-10 5z", "M6 11v5c3 2 9 2 12 0v-5", "M22 9v6"],
+  search: ["M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z", "M21 21l-4.35-4.35"],
   game: ["M6 8h12a4 4 0 0 1 4 4v2a3 3 0 0 1-5.2 2L15 14H9l-1.8 2A3 3 0 0 1 2 14v-2a4 4 0 0 1 4-4z", "M7 10.5v3", "M5.5 12h3", "M16 11h.01", "M18 13h.01"],
 };
 
@@ -232,18 +233,47 @@ export function ScoreBar({ left, right, status }: { left: ScoreSide; right: Scor
   );
 }
 
+/* ---------------- logo ---------------- */
+
+/** The "yaapi" sticker wordmark. */
+export function Logo({ className = "text-[24px]" }: { className?: string }) {
+  return (
+    <span
+      className={`${displayFont} inline-block -rotate-3 rounded-xl border-2 border-[#1E1B2E] bg-[#FFD43B] px-2 py-0.5 leading-none text-[#1E1B2E] shadow-[2px_2px_0_#1E1B2E] ${className}`}
+    >
+      yaapi
+    </span>
+  );
+}
+
 /* ---------------- page header ---------------- */
 
-export function PageHeader({ title, back, right, sub }: { title: ReactNode; back?: string; right?: ReactNode; sub?: ReactNode }) {
+/** Sticky page header. `children` render inside it, below the title row (e.g. a search box). */
+export function PageHeader({
+  title,
+  back,
+  right,
+  sub,
+  children,
+}: {
+  title: ReactNode;
+  back?: string;
+  right?: ReactNode;
+  sub?: ReactNode;
+  children?: ReactNode;
+}) {
   return (
     <header className="sticky top-0 z-30 border-b-2 border-[#1E1B2E] bg-[#F6F3FF]/95 backdrop-blur">
-      <div className="mx-auto flex max-w-2xl items-center gap-2 px-4 py-3">
-        {back && <BackButton href={back} />}
-        <div className="min-w-0 flex-1">
-          <h1 className={`${displayFont} truncate text-2xl leading-tight text-[#1E1B2E]`}>{title}</h1>
-          {sub && <div className="truncate text-xs font-semibold text-[#5E5A72]">{sub}</div>}
+      <div className="mx-auto max-w-2xl px-4 py-3">
+        <div className="flex items-center gap-2">
+          {back && <BackButton href={back} />}
+          <div className="min-w-0 flex-1">
+            <h1 className={`${displayFont} truncate text-2xl leading-tight text-[#1E1B2E]`}>{title}</h1>
+            {sub && <div className="truncate text-xs font-semibold text-[#5E5A72]">{sub}</div>}
+          </div>
+          {right}
         </div>
-        {right}
+        {children && <div className="mt-3">{children}</div>}
       </div>
     </header>
   );

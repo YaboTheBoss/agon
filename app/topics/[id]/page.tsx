@@ -80,6 +80,11 @@ export default function TopicPage() {
             </li>
           ))}
         </ul>
+        {chats.length === 0 && (
+          <p className="rounded-2xl border-2 border-dashed border-[#1E1B2E] bg-white px-4 py-5 text-center text-sm font-semibold text-[#3A3650]">
+            No chats on this topic yet. Pick a side above to start the first one.
+          </p>
+        )}
       </main>
 
       {pairing && <PairingOverlay pairing={pairing} onCancel={cancelPairing} />}

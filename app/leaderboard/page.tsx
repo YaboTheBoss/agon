@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Leaderboard — people with the most likes / most activity.
+ * Yaaperboard (leaderboard) — people with the most likes / most activity.
  */
 
 import { useState } from "react";
@@ -35,7 +35,7 @@ export default function LeaderboardPage() {
   if (!ready) {
     return (
       <>
-        <PageHeader title="Leaderboard" sub="All time" />
+        <PageHeader title="Yaaperboard" sub="All time" />
         <Loading />
       </>
     );
@@ -43,7 +43,7 @@ export default function LeaderboardPage() {
 
   return (
     <>
-      <PageHeader title="Leaderboard" sub="All time" />
+      <PageHeader title="Yaaperboard" sub="All time" />
 
       <main className="mx-auto max-w-2xl space-y-5 px-4 pt-5">
         <div role="radiogroup" aria-label="Rank by" className="grid grid-cols-2 gap-2">

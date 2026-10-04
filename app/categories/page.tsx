@@ -4,12 +4,15 @@ import Link from "next/link";
 import { topicsForCategory } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { Icon, Loading, PageHeader, press } from "@/components/ui";
+import { SearchBox } from "@/components/SearchBox";
 
 export default function CategoriesPage() {
   const { ready, categories, topics } = useStore();
   return (
     <>
-      <PageHeader title="Categories" sub="Find your kind of argument" />
+      <PageHeader title="Categories" sub="Find your kind of argument">
+        <SearchBox />
+      </PageHeader>
       <main className="mx-auto max-w-2xl px-4 pt-5">
         {!ready && <Loading />}
         <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">

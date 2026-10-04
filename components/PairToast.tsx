@@ -3,7 +3,7 @@
 /**
  * "You got paired with another user!" — shown on any page when someone gets
  * matched with a ticket you left in the queue. Opening the chat (here or from
- * My Chats) clears it.
+ * My yaapi) clears it.
  */
 
 import Link from "next/link";
