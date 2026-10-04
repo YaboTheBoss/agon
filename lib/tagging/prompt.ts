@@ -51,3 +51,47 @@ export function taggingJsonSchema(tagSlugs: string[]) {
     required: ["tags", "tone", "entities"],
   };
 }
+
+/* ---------------- conversation summaries ---------------- */
+
+export type ConvoForSummary = {
+  topic: string;
+  sideA: { name: string; label: string };
+  sideB: { name: string; label: string };
+  /** In order; each line "Name: text". */
+  lines: string[];
+};
+
+/** Keep prompts bounded: long chats are cut to their opening and closing stretches. */
+const MAX_TRANSCRIPT_CHARS = 12_000;
+
+export const SUMMARY_SYSTEM_INSTRUCTION = [
+  "You write the AI summary shown on a finished debate on Yaapi.",
+  "Return only the requested JSON.",
+  "summary: 2 or 3 sentences, under 350 characters, in plain present tense.",
+  "Name both players and the main point each made; mention a concession, a turning point or common ground if there was one.",
+  "Be neutral and fair: no winner, no judgement of who was right, no quotes longer than a few words.",
+  "Write about what was said only. If the chat is mostly off-topic or very short, say so briefly.",
+].join("\n");
+
+export function buildSummaryPrompt(c: ConvoForSummary) {
+  let transcript = c.lines.join("\n");
+  if (transcript.length > MAX_TRANSCRIPT_CHARS) {
+    const half = MAX_TRANSCRIPT_CHARS / 2;
+    transcript = `${transcript.slice(0, half)}\n[… middle of the conversation omitted …]\n${transcript.slice(-half)}`;
+  }
+  return [
+    `Debate question: ${c.topic}`,
+    `${c.sideA.name} argued: ${c.sideA.label}`,
+    `${c.sideB.name} argued: ${c.sideB.label}`,
+    "",
+    "Transcript:",
+    transcript,
+  ].join("\n");
+}
+
+export const summaryJsonSchema = {
+  type: "object",
+  properties: { summary: { type: "string" } },
+  required: ["summary"],
+};

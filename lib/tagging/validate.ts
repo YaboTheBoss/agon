@@ -44,3 +44,14 @@ export function normalizeFeatures(raw: unknown, allowedTags: ReadonlySet<string>
 
   return { tags, tone, entities };
 }
+
+/** The summary text the database will accept (1–600 chars), tidied. */
+export function normalizeSummary(raw: unknown): string {
+  const text = raw && typeof raw === "object" && typeof (raw as Record<string, unknown>).summary === "string" ? ((raw as Record<string, unknown>).summary as string) : "";
+  const clean = text.trim().replace(/\s+/g, " ");
+  if (!clean) throw new InvalidTaggingError("No summary in model output");
+  if (clean.length <= 600) return clean;
+  const cut = clean.slice(0, 600);
+  const lastStop = cut.lastIndexOf(". ");
+  return lastStop > 200 ? cut.slice(0, lastStop + 1) : `${cut.slice(0, 597)}…`;
+}

@@ -15,7 +15,7 @@ import type { Identity } from "spacetimedb";
 import { DbConnection, reducers, tables } from "@/lib/module_bindings";
 import { tokenExpired, useAuth } from "@/lib/auth";
 import type { Category, Choice, Convo, IconName, Leader, Mode, MyChat, Side, Topic } from "@/lib/data";
-import { decayScore, rankFeed, type FeedEntity, type MemoryRow } from "@/lib/recommend";
+import { decayScore, rankConvos, rankFeed, type ConvoMemoryRow, type FeedEntity, type FeedInputs, type MemoryRow } from "@/lib/recommend";
 
 export type QueuedTicket = { id: string; topicId: string; title: string; choice: Choice; mode: Mode; since: number };
 export type PairNotification = { id: string; chatId: string; title: string; text: string; at: number };
@@ -109,6 +109,8 @@ function useBuildStore() {
   const [topicEntityRows, topicEntitiesReady] = useTable(tables.topicEntity);
   const [affinityRows, affinityReady] = useTable(tables.affinity);
   const [memoryRows, memoryReady] = useTable(tables.topicMemory);
+  const [convoMemoryRows, convoMemoryReady] = useTable(tables.convoMemory);
+  const [chatStatsRows, chatStatsReady] = useTable(tables.chatStats);
 
   const ready = playersReady && categoriesReady && topicsReady && chatsReady && messagesReady;
 
@@ -127,13 +129,16 @@ function useBuildStore() {
   const trackEvent = useReducer(reducers.trackEvent);
   const trackImpressions = useReducer(reducers.trackImpressions);
   const setInterests = useReducer(reducers.setInterests);
+  const trackConvoEvent = useReducer(reducers.trackConvoEvent);
+  const trackConvoImpressions = useReducer(reducers.trackConvoImpressions);
 
-  // Wall clock for decay and freshness, ticking once a minute (never read during render).
+  // Wall clock for decay, freshness and liveness (never read during render).
   const [now, setNow] = useState(0);
   useEffect(() => {
     const tick = () => setNow(Date.now());
     const first = setTimeout(tick, 0);
-    const every = setInterval(tick, 60_000);
+    // 15 s: precise enough for "live casual chats must have a message in the last minute".
+    const every = setInterval(tick, 15_000);
     return () => {
       clearTimeout(first);
       clearInterval(every);
@@ -211,10 +216,12 @@ function useBuildStore() {
         summary: c.summary,
         likes: c.likes,
         mode: c.mode as Mode,
-        status: c.mode === "comp" ? (c.status as "live" | "ended") : undefined,
+        status: c.status as "live" | "ended",
         scores: c.mode === "comp" ? (panelVotes(c.resultJson) ?? { a: 0, b: 0 }) : undefined,
         messages: (messagesByChat.get(c.id) ?? []).map((m) => ({ id: m.id.toString(), side: m.side as Side, text: m.text })),
         lastAt: ms(c.lastAt),
+        mine: same(c.a, identity) || same(c.b, identity),
+        hasResult: c.mode === "comp" && !!c.resultJson,
       }))
       .sort((x, y) => y.likes - x.likes);
 
@@ -231,7 +238,7 @@ function useBuildStore() {
           opponent: nameOf(oppId),
           mySide,
           mode: c.mode as Mode,
-          status: c.mode === "comp" ? (c.status as "live" | "ended") : undefined,
+          status: c.status as "live" | "ended",
           scores: c.mode === "comp" ? (() => {
             const votes = panelVotes(c.resultJson) ?? { a: 0, b: 0 };
             return { me: mySide === "a" ? votes.a : votes.b, them: mySide === "a" ? votes.b : votes.a };
@@ -301,7 +308,7 @@ function useBuildStore() {
   // Personalised feed order (lib/recommend.ts). Recomputed as data changes; the feed
   // page snapshots it on open so cards don't jump around while you scroll.
   const tags: TagOption[] = useMemo(() => [...tagRows].sort((x, y) => x.sort - y.sort).map((t) => ({ slug: t.slug, name: t.name })), [tagRows]);
-  const feed: Topic[] = useMemo(() => {
+  const feedInputs: FeedInputs = useMemo(() => {
     const at = now || Math.max(0, ...derived.topics.map((t) => t.createdAt));
     const group = <T,>(rows: readonly T[], key: (r: T) => string) => {
       const m = new Map<string, T[]>();
@@ -329,7 +336,7 @@ function useBuildStore() {
       const k = tk.topicId.toString();
       waitingByTopic.set(k, (waitingByTopic.get(k) ?? 0) + 1);
     }
-    return rankFeed({
+    return {
       topics: derived.topics,
       tagsByTopic: new Map([...group(topicTagRows, (r) => r.topicId.toString())].map(([k, rs]) => [k, rs.map((r) => r.tag)])),
       toneByTopic: new Map(topicMetaRows.map((m) => [m.topicId.toString(), m.tone])),
@@ -347,8 +354,16 @@ function useBuildStore() {
       categoryNames: new Map(derived.categories.map((c) => [c.slug, c.name])),
       now: at,
       seed: identity?.toHexString() ?? "anon",
-    });
+    };
   }, [now, identity, derived.topics, derived.categories, tags, topicTagRows, topicMetaRows, entityRows, topicEntityRows, affinityRows, memoryRows, chatRows, ticketRows]);
+  const feed: Topic[] = useMemo(() => rankFeed(feedInputs), [feedInputs]);
+  // View yaaps: conversations ranked through their topic, with like-based popularity.
+  const convoFeed: Convo[] = useMemo(() => {
+    const memory = new Map<string, ConvoMemoryRow>();
+    for (const m of convoMemoryRows) if (same(m.owner, identity)) memory.set(m.chatId.toString(), { shown: m.shown, opened: m.opened, read: m.read });
+    const readers = new Map(chatStatsRows.map((r) => [r.chatId.toString(), r.readers]));
+    return rankConvos({ convos: derived.convos, topicInputs: feedInputs, memory, readers });
+  }, [feedInputs, derived.convos, convoMemoryRows, chatStatsRows, identity]);
 
   // Impressions: cards report themselves once per visit; we send them in batches.
   // Only players with a finished profile are tracked (the server refuses the rest).
@@ -378,6 +393,28 @@ function useBuildStore() {
     pendingImpressions.current.add(topicId);
   }, []);
 
+  // Same batching for conversation cards on View yaaps.
+  const pendingConvoImpressions = useRef(new Set<string>());
+  const sentConvoImpressions = useRef(new Set<string>());
+  useEffect(() => {
+    const flush = () => {
+      if (!canTrackRef.current || pendingConvoImpressions.current.size === 0) return;
+      const ids = [...pendingConvoImpressions.current].slice(0, 50);
+      ids.forEach((id) => pendingConvoImpressions.current.delete(id));
+      trackConvoImpressions({ chatIds: ids.map((id) => BigInt(id)) }).catch(() => {});
+    };
+    const every = setInterval(flush, IMPRESSION_FLUSH_MS);
+    return () => {
+      clearInterval(every);
+      flush();
+    };
+  }, [trackConvoImpressions]);
+  const reportConvoImpression = useCallback((chatId: string) => {
+    if (sentConvoImpressions.current.has(chatId)) return;
+    sentConvoImpressions.current.add(chatId);
+    pendingConvoImpressions.current.add(chatId);
+  }, []);
+
   // Stable identity so effects can depend on it without re-running every update.
   const actions = useMemo(
     () => ({
@@ -397,8 +434,11 @@ function useBuildStore() {
       trackEvent: (topicId: string, kind: "open" | "read") => trackEvent({ topicId: BigInt(topicId), kind }).catch(() => {}),
       setInterests: (interests: string[]) => setInterests({ interests }),
       reportImpression,
+      /** Spectating a conversation: "open", or "read" after 20 s. Also counts toward its topic. Callers check `canTrack` first. */
+      trackConvoEvent: (chatId: string, kind: "open" | "read") => trackConvoEvent({ chatId: BigInt(chatId), kind }).catch(() => {}),
+      reportConvoImpression,
     }),
-    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName, completeProfile, advanceMatch, passTurn, yieldEngagement, submitJudgingResult, trackEvent, setInterests, reportImpression]
+    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName, completeProfile, advanceMatch, passTurn, yieldEngagement, submitJudgingResult, trackEvent, setInterests, reportImpression, trackConvoEvent, reportConvoImpression]
   );
 
   return {
@@ -413,6 +453,9 @@ function useBuildStore() {
     canTrack,
     /** The profile and topic features have loaded and the clock has ticked: safe to snapshot `feed`. */
     feedReady: ready && now > 0 && tagsReady && topicTagsReady && topicEntitiesReady && affinityReady && memoryReady,
+    /** Conversations in personalised order for View yaaps (see lib/recommend.ts rankConvos). */
+    convoFeed,
+    convoFeedReady: ready && now > 0 && tagsReady && topicTagsReady && topicEntitiesReady && affinityReady && convoMemoryReady && chatStatsReady,
     /** The app-wide tag list, for the interests picker. */
     tags,
     /** Signed in with Google but hasn't picked a username yet. */

@@ -24,6 +24,18 @@ export const Affinity = __t.object("Affinity", {
 });
 export type Affinity = __Infer<typeof Affinity>;
 
+export const CasualClock = __t.object("CasualClock", {
+  chatId: __t.u64(),
+  firstMessageAt: __t.timestamp(),
+});
+export type CasualClock = __Infer<typeof CasualClock>;
+
+export const CasualSweepJob = __t.object("CasualSweepJob", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type CasualSweepJob = __Infer<typeof CasualSweepJob>;
+
 export const Category = __t.object("Category", {
   slug: __t.string(),
   name: __t.string(),
@@ -71,6 +83,23 @@ export const ChatLike = __t.object("ChatLike", {
   liker: __t.identity(),
 });
 export type ChatLike = __Infer<typeof ChatLike>;
+
+export const ChatStats = __t.object("ChatStats", {
+  chatId: __t.u64(),
+  readers: __t.u32(),
+});
+export type ChatStats = __Infer<typeof ChatStats>;
+
+export const ConvoMemory = __t.object("ConvoMemory", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  chatId: __t.u64(),
+  shown: __t.u32(),
+  lastShownAt: __t.timestamp(),
+  opened: __t.bool(),
+  read: __t.bool(),
+});
+export type ConvoMemory = __Infer<typeof ConvoMemory>;
 
 export const Entity = __t.object("Entity", {
   id: __t.u64(),

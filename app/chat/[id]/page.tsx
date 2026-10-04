@@ -4,7 +4,7 @@
  * Chat — a conversation YOU are in. Same look as the detailed (spectator) page,
  * but with a composer so you can text.
  *
- *  • Casual: just the chat. No live/ended, no points.
+ *  • Casual: just the chat, no points. Ends 2 days after its first message.
  *  • Comp (challenge): point comparison pinned at the top, a Live/Ended state,
  *    and each message earns points from the AI ref.
  *
@@ -107,7 +107,7 @@ export default function ChatPage() {
   }
 
   const comp = chat.mode === "comp";
-  const ended = comp && chat.status === "ended";
+  const ended = chat.status === "ended";
   // Comp is strictly turn-based; casual lets you double-text.
   const simultaneous = comp && (chat.phase === "opening" || chat.phase === "closing");
   const submitted = simultaneous && chat.submitted?.me;
@@ -221,7 +221,7 @@ export default function ChatPage() {
       <footer className="shrink-0 border-t-2 border-[#1E1B2E] bg-white pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-2xl px-4 pt-3">
           {ended ? (
-            <p className="py-2 text-center text-sm font-bold">Debate complete.</p>
+            <p className="py-2 text-center text-sm font-bold">{comp ? "Debate complete." : "This chat has ended. Casual chats close 2 days after the first message."}</p>
           ) : chat.phase === "judging" ? (
             <p className="py-2 text-center text-sm font-extrabold"><Icon name="sparkle" className="mr-1 inline h-4 w-4" />The panel is judging the full debate…</p>
           ) : (

@@ -22,10 +22,13 @@ import {
   affinity,
   applyTopicFeatures,
   backfillFeatures,
+  chatStats,
+  convoMemory,
   entity,
   interaction,
   pruneInteractions,
   pruneJob,
+  recordConvoEvent,
   recordEvent,
   seedInterests,
   service,
@@ -36,6 +39,7 @@ import {
   topicMeta,
   topicTag,
 } from './recommend';
+import { CASUAL_SWEEP_EVERY_MICROS, casualClock, casualExpired, casualSweepJob, startCasualClock, sweepCasualChats } from './casual';
 
 /* ---------------- tables ---------------- */
 
@@ -220,6 +224,9 @@ const spacetimedb = schema({
   player, admin, username, category, topic, vote, ticket, chat, message, submission, chatLike, notification,
   // feed recommendations (recommend.ts)
   tag, topicTag, topicMeta, entity, topicEntity, interaction, affinity, topicMemory, service, pruneJob,
+  convoMemory, chatStats,
+  // casual chat lifetime (casual.ts)
+  casualClock, casualSweepJob,
 });
 export default spacetimedb;
 
@@ -227,6 +234,7 @@ export const ownNotifications = spacetimedb.clientVisibilityFilter.sql('SELECT *
 // Taste profiles are private: each player receives only their own rows.
 export const ownAffinity = spacetimedb.clientVisibilityFilter.sql('SELECT * FROM affinity WHERE owner = :sender');
 export const ownTopicMemory = spacetimedb.clientVisibilityFilter.sql('SELECT * FROM topic_memory WHERE owner = :sender');
+export const ownConvoMemory = spacetimedb.clientVisibilityFilter.sql('SELECT * FROM convo_memory WHERE owner = :sender');
 
 export type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
 
@@ -429,8 +437,13 @@ function noteMessage(ctx: Ctx, c: ChatRow) {
 
 /** Make sure the daily interaction-pruning job exists (init only runs on a fresh database). */
 function ensurePruneJob(ctx: Ctx) {
-  if ([...ctx.db.pruneJob.iter()].length > 0) return;
-  ctx.db.pruneJob.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.interval(PRUNE_EVERY_MICROS) });
+  if ([...ctx.db.pruneJob.iter()].length === 0) {
+    ctx.db.pruneJob.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.interval(PRUNE_EVERY_MICROS) });
+  }
+  // Same "init only runs on a fresh database" reason for the casual-chat sweep.
+  if ([...ctx.db.casualSweepJob.iter()].length === 0) {
+    ctx.db.casualSweepJob.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.interval(CASUAL_SWEEP_EVERY_MICROS) });
+  }
 }
 
 function requireAdmin(ctx: Ctx) {
@@ -622,6 +635,7 @@ export const sendMessage = spacetimedb.reducer({ chatId: t.u64(), text: t.string
   const mine = c.a.isEqual(ctx.sender) || c.b.isEqual(ctx.sender);
   if (!mine) throw new SenderError('You are not in this chat');
   if (c.status === 'ended') throw new SenderError('This debate has ended');
+  if (c.mode === 'casual' && casualExpired(ctx, chatId)) throw new SenderError('This chat has ended');
 
   if (c.mode === 'comp') {
     const side = c.a.isEqual(ctx.sender) ? 'a' : 'b';
@@ -651,6 +665,7 @@ export const sendMessage = spacetimedb.reducer({ chatId: t.u64(), text: t.string
 
   postMessage(ctx, chatId, ctx.sender, body);
   noteMessage(ctx, c);
+  if (c.mode === 'casual') startCasualClock(ctx, chatId);
 });
 
 export const passTurn = spacetimedb.reducer({ chatId: t.u64() }, (ctx, { chatId }) => {
@@ -747,6 +762,20 @@ export const trackImpressions = spacetimedb.reducer({ topicIds: t.array(t.u64())
   for (const id of new Set(topicIds)) if (ctx.db.topic.id.find(id)) recordEvent(ctx, ctx.sender, id, 'impression');
 });
 
+/** Spectator actions on one conversation: "open", or "read" (20 s+). Also counts toward its topic. */
+export const trackConvoEvent = spacetimedb.reducer({ chatId: t.u64(), kind: t.string() }, (ctx, { chatId, kind }) => {
+  requireProfile(ctx);
+  if (kind !== 'open' && kind !== 'read') throw new SenderError('Unknown event');
+  recordConvoEvent(ctx, ctx.sender, chatId, kind);
+});
+
+/** Conversation cards that were actually on screen, batched by the client. Repeats within a day are ignored. */
+export const trackConvoImpressions = spacetimedb.reducer({ chatIds: t.array(t.u64()) }, (ctx, { chatIds }) => {
+  requireProfile(ctx);
+  if (chatIds.length > 50) throw new SenderError('Too many impressions at once');
+  for (const id of new Set(chatIds)) if (ctx.db.chat.id.find(id)) recordConvoEvent(ctx, ctx.sender, id, 'impression');
+});
+
 /** Welcome-screen interests: tag slugs (or "cat:<slug>") to start the taste profile with. */
 export const setInterests = spacetimedb.reducer({ interests: t.array(t.string()) }, (ctx, { interests }) => {
   requirePlayer(ctx);
@@ -795,4 +824,23 @@ export const backfillTopicFeatures = spacetimedb.reducer(ctx => {
 
 export const pruneTick = spacetimedb.reducer({ onSchedule: pruneJob }, { job: pruneJob.rowType }, ctx => {
   pruneInteractions(ctx);
+});
+
+/** Every minute: end casual chats that are 2 days past their first message. */
+export const casualSweepTick = spacetimedb.reducer({ onSchedule: casualSweepJob }, { job: casualSweepJob.rowType }, ctx => {
+  sweepCasualChats(ctx);
+});
+
+/**
+ * Write the AI summary of a finished conversation. Only the registered AI
+ * service may call this, and only for ended chats (live chats have no summary).
+ */
+export const setChatSummary = spacetimedb.reducer({ chatId: t.u64(), summary: t.string() }, (ctx, { chatId, summary }) => {
+  if (!ctx.db.service.identity.find(ctx.sender)) throw new SenderError('Only the AI service may write summaries');
+  const c = ctx.db.chat.id.find(chatId);
+  if (!c) throw new SenderError('Unknown conversation');
+  if (c.status !== 'ended') throw new SenderError('Only ended conversations get a summary');
+  const text = summary.trim();
+  if (!text || text.length > 600) throw new SenderError('Summaries must be 1–600 characters');
+  ctx.db.chat.id.update({ ...c, summary: text });
 });

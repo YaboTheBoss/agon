@@ -124,6 +124,33 @@ export const topicMemory = table(
   }
 );
 
+/** Per player per conversation: seen / opened / read, for the View yaaps ranking. Each player sees only their own rows. */
+export const convoMemory = table(
+  {
+    name: 'convo_memory',
+    public: true,
+    indexes: [{ accessor: 'by_owner_chat', algorithm: 'btree', columns: ['owner', 'chatId'] }],
+  },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    owner: t.identity(),
+    chatId: t.u64(),
+    shown: t.u32(),
+    lastShownAt: t.timestamp(),
+    opened: t.bool(),
+    read: t.bool(),
+  }
+);
+
+/** Public per-conversation counters (unique readers) for like-rate popularity. */
+export const chatStats = table(
+  { name: 'chat_stats', public: true },
+  {
+    chatId: t.u64().primaryKey(),
+    readers: t.u32(),
+  }
+);
+
 /** Identities allowed to set topic features (the AI tagging server). Private; managed by the admin. */
 export const service = table(
   { name: 'service' },
@@ -437,3 +464,45 @@ export function pruneInteractions(ctx: Ctx) {
 }
 
 export const PRUNE_EVERY_MICROS = MICROS_PER_DAY;
+
+/* ---------------- conversations (View yaaps) ---------------- */
+
+export type ConvoEventKind = 'open' | 'read' | 'impression';
+
+function convoMemoryFor(ctx: Ctx, owner: Identity, chatId: bigint) {
+  const row = [...ctx.db.convoMemory.by_owner_chat.filter([owner, chatId])][0];
+  if (row) return row;
+  return ctx.db.convoMemory.insert({ id: 0n, owner, chatId, shown: 0, lastShownAt: Timestamp.UNIX_EPOCH, opened: false, read: false });
+}
+
+/**
+ * Record a spectator action on one conversation. Opens and reads also count
+ * toward the conversation's topic (recordEvent, with its own cooldowns).
+ * Readers are counted once per player. Returns false if nothing changed.
+ */
+export function recordConvoEvent(ctx: Ctx, owner: Identity, chatId: bigint, kind: ConvoEventKind) {
+  const chat = ctx.db.chat.id.find(chatId);
+  if (!chat) throw new SenderError('Unknown conversation');
+  const mem = convoMemoryFor(ctx, owner, chatId);
+
+  if (kind === 'impression') {
+    if (at(ctx.timestamp) - at(mem.lastShownAt) < IMPRESSION_COOLDOWN_MICROS) return false;
+    ctx.db.convoMemory.id.update({ ...mem, shown: mem.shown + 1, lastShownAt: ctx.timestamp });
+    return true;
+  }
+
+  if (kind === 'open') {
+    if (!mem.opened) ctx.db.convoMemory.id.update({ ...mem, opened: true });
+    recordEvent(ctx, owner, chat.topicId, 'open');
+    return true;
+  }
+
+  // read
+  if (mem.read) return false;
+  ctx.db.convoMemory.id.update({ ...mem, opened: true, read: true });
+  const stats = ctx.db.chatStats.chatId.find(chatId);
+  if (stats) ctx.db.chatStats.chatId.update({ ...stats, readers: stats.readers + 1 });
+  else ctx.db.chatStats.insert({ chatId, readers: 1 });
+  recordEvent(ctx, owner, chat.topicId, 'read');
+  return true;
+}

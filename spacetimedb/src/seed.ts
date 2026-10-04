@@ -187,7 +187,8 @@ export function seed(ctx: Ctx) {
       mode: cv.mode,
       a,
       b,
-      status: cv.status ?? 'live',
+      // Demo casual chats are finished examples (casual chats end 2 days after their first message).
+      status: cv.status ?? (cv.mode === 'casual' ? 'ended' : 'live'),
       scoreA: cv.scores?.[0] ?? 0,
       scoreB: cv.scores?.[1] ?? 0,
       likes: cv.likes,

@@ -46,11 +46,14 @@ import PassTurnReducer from "./pass_turn_reducer";
 import RemoveDemoDataReducer from "./remove_demo_data_reducer";
 import RevokeServiceReducer from "./revoke_service_reducer";
 import SendMessageReducer from "./send_message_reducer";
+import SetChatSummaryReducer from "./set_chat_summary_reducer";
 import SetInterestsReducer from "./set_interests_reducer";
 import SetNameReducer from "./set_name_reducer";
 import SetTopicFeaturesReducer from "./set_topic_features_reducer";
 import SubmitJudgingResultReducer from "./submit_judging_result_reducer";
 import ToggleLikeReducer from "./toggle_like_reducer";
+import TrackConvoEventReducer from "./track_convo_event_reducer";
+import TrackConvoImpressionsReducer from "./track_convo_impressions_reducer";
 import TrackEventReducer from "./track_event_reducer";
 import TrackImpressionsReducer from "./track_impressions_reducer";
 import YieldEngagementReducer from "./yield_engagement_reducer";
@@ -62,6 +65,8 @@ import AffinityRow from "./affinity_table";
 import CategoryRow from "./category_table";
 import ChatRow from "./chat_table";
 import ChatLikeRow from "./chat_like_table";
+import ChatStatsRow from "./chat_stats_table";
+import ConvoMemoryRow from "./convo_memory_table";
 import EntityRow from "./entity_table";
 import MessageRow from "./message_table";
 import NotificationRow from "./notification_table";
@@ -141,6 +146,32 @@ const tablesSchema = __schema({
       { name: 'chat_like_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, ChatLikeRow),
+  chatStats: __table({
+    name: 'chat_stats',
+    indexes: [
+      { accessor: 'chatId', name: 'chat_stats_chat_id_idx_btree', algorithm: 'btree', columns: [
+        'chatId',
+      ] },
+    ],
+    constraints: [
+      { name: 'chat_stats_chat_id_key', constraint: 'unique', columns: ['chatId'] },
+    ],
+  }, ChatStatsRow),
+  convoMemory: __table({
+    name: 'convo_memory',
+    indexes: [
+      { accessor: 'id', name: 'convo_memory_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'by_owner_chat', name: 'convo_memory_owner_chat_id_idx_btree', algorithm: 'btree', columns: [
+        'owner',
+        'chatId',
+      ] },
+    ],
+    constraints: [
+      { name: 'convo_memory_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, ConvoMemoryRow),
   entity: __table({
     name: 'entity',
     indexes: [
@@ -340,11 +371,14 @@ const reducersSchema = __reducers(
   __reducerSchema("remove_demo_data", RemoveDemoDataReducer),
   __reducerSchema("revoke_service", RevokeServiceReducer),
   __reducerSchema("send_message", SendMessageReducer),
+  __reducerSchema("set_chat_summary", SetChatSummaryReducer),
   __reducerSchema("set_interests", SetInterestsReducer),
   __reducerSchema("set_name", SetNameReducer),
   __reducerSchema("set_topic_features", SetTopicFeaturesReducer),
   __reducerSchema("submit_judging_result", SubmitJudgingResultReducer),
   __reducerSchema("toggle_like", ToggleLikeReducer),
+  __reducerSchema("track_convo_event", TrackConvoEventReducer),
+  __reducerSchema("track_convo_impressions", TrackConvoImpressionsReducer),
   __reducerSchema("track_event", TrackEventReducer),
   __reducerSchema("track_impressions", TrackImpressionsReducer),
   __reducerSchema("yield_engagement", YieldEngagementReducer),
