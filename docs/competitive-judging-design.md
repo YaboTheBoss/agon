@@ -1,5 +1,7 @@
 # Yaapi Competitive Judging Design
 
+> **Superseded (Oct 2026):** comp debates now use free chat with AI points every 6 messages and a winner by points. See [`comp-points-design.md`](comp-points-design.md). Kept for reference.
+
 Status: Working design
 
 This document defines the current design for judging completed competitive debates in Yaapi. It covers the judging principles, panel architecture, escalation behavior, rubric, factual uncertainty, aggregation, feedback synthesis, and relationship between judge agreement and rating changes.

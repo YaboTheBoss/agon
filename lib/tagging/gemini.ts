@@ -2,17 +2,25 @@ import "server-only";
 
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import {
+  FEEDBACK_SYSTEM_INSTRUCTION,
+  SCORING_SYSTEM_INSTRUCTION,
   SUMMARY_SYSTEM_INSTRUCTION,
   TAGGING_SYSTEM_INSTRUCTION,
+  buildFeedbackPrompt,
+  buildScoringPrompt,
   buildSummaryPrompt,
+  feedbackJsonSchema,
+  scoringJsonSchema,
   buildTaggingPrompt,
   summaryJsonSchema,
   taggingJsonSchema,
+  type BatchForScoring,
+  type ConvoForFeedback,
   type ConvoForSummary,
   type TagOption,
   type TopicForTagging,
 } from "./prompt";
-import { normalizeFeatures, normalizeSummary, type TopicFeatures } from "./validate";
+import { normalizeAwards, normalizeFeatures, normalizeFeedback, normalizeSummary, type BatchAward, type Feedback, type TopicFeatures } from "./validate";
 
 export const TAGGING_MODEL = "gemini-3.8-flash";
 
@@ -65,4 +73,15 @@ export async function generateTopicFeatures(topic: TopicForTagging, tags: TagOpt
 /** Ask Gemini for a finished conversation's summary. Throws on failure. */
 export async function generateConvoSummary(convo: ConvoForSummary): Promise<string> {
   return normalizeSummary(await generateJson(buildSummaryPrompt(convo), SUMMARY_SYSTEM_INSTRUCTION, summaryJsonSchema));
+}
+
+/** Score one batch of comp messages. Only constructive messages come back with points. */
+export async function generateBatchAwards(batch: BatchForScoring): Promise<BatchAward[]> {
+  const ids = batch.batch.map((m) => m.id);
+  return normalizeAwards(await generateJson(buildScoringPrompt(batch), SCORING_SYSTEM_INSTRUCTION, scoringJsonSchema(ids)), new Set(ids));
+}
+
+/** Holistic end-of-debate feedback for both sides (the result itself is already decided by points). */
+export async function generateFeedback(convo: ConvoForFeedback): Promise<Feedback> {
+  return normalizeFeedback(await generateJson(buildFeedbackPrompt(convo), FEEDBACK_SYSTEM_INSTRUCTION, feedbackJsonSchema));
 }

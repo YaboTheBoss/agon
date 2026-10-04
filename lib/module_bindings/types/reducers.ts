@@ -6,7 +6,7 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
-import AdvanceMatchReducer from "../advance_match_reducer";
+import AwardPointsReducer from "../award_points_reducer";
 import BackfillTopicFeaturesReducer from "../backfill_topic_features_reducer";
 import CompleteProfileReducer from "../complete_profile_reducer";
 import CreateTopicReducer from "../create_topic_reducer";
@@ -14,23 +14,21 @@ import DismissNotificationsReducer from "../dismiss_notifications_reducer";
 import GrantServiceReducer from "../grant_service_reducer";
 import JoinQueueReducer from "../join_queue_reducer";
 import LeaveQueueReducer from "../leave_queue_reducer";
-import PassTurnReducer from "../pass_turn_reducer";
 import RemoveDemoDataReducer from "../remove_demo_data_reducer";
 import RevokeServiceReducer from "../revoke_service_reducer";
 import SendMessageReducer from "../send_message_reducer";
+import SetChatResultReducer from "../set_chat_result_reducer";
 import SetChatSummaryReducer from "../set_chat_summary_reducer";
 import SetInterestsReducer from "../set_interests_reducer";
 import SetNameReducer from "../set_name_reducer";
 import SetTopicFeaturesReducer from "../set_topic_features_reducer";
-import SubmitJudgingResultReducer from "../submit_judging_result_reducer";
 import ToggleLikeReducer from "../toggle_like_reducer";
 import TrackConvoEventReducer from "../track_convo_event_reducer";
 import TrackConvoImpressionsReducer from "../track_convo_impressions_reducer";
 import TrackEventReducer from "../track_event_reducer";
 import TrackImpressionsReducer from "../track_impressions_reducer";
-import YieldEngagementReducer from "../yield_engagement_reducer";
 
-export type AdvanceMatchParams = __Infer<typeof AdvanceMatchReducer>;
+export type AwardPointsParams = __Infer<typeof AwardPointsReducer>;
 export type BackfillTopicFeaturesParams = __Infer<typeof BackfillTopicFeaturesReducer>;
 export type CompleteProfileParams = __Infer<typeof CompleteProfileReducer>;
 export type CreateTopicParams = __Infer<typeof CreateTopicReducer>;
@@ -38,19 +36,17 @@ export type DismissNotificationsParams = __Infer<typeof DismissNotificationsRedu
 export type GrantServiceParams = __Infer<typeof GrantServiceReducer>;
 export type JoinQueueParams = __Infer<typeof JoinQueueReducer>;
 export type LeaveQueueParams = __Infer<typeof LeaveQueueReducer>;
-export type PassTurnParams = __Infer<typeof PassTurnReducer>;
 export type RemoveDemoDataParams = __Infer<typeof RemoveDemoDataReducer>;
 export type RevokeServiceParams = __Infer<typeof RevokeServiceReducer>;
 export type SendMessageParams = __Infer<typeof SendMessageReducer>;
+export type SetChatResultParams = __Infer<typeof SetChatResultReducer>;
 export type SetChatSummaryParams = __Infer<typeof SetChatSummaryReducer>;
 export type SetInterestsParams = __Infer<typeof SetInterestsReducer>;
 export type SetNameParams = __Infer<typeof SetNameReducer>;
 export type SetTopicFeaturesParams = __Infer<typeof SetTopicFeaturesReducer>;
-export type SubmitJudgingResultParams = __Infer<typeof SubmitJudgingResultReducer>;
 export type ToggleLikeParams = __Infer<typeof ToggleLikeReducer>;
 export type TrackConvoEventParams = __Infer<typeof TrackConvoEventReducer>;
 export type TrackConvoImpressionsParams = __Infer<typeof TrackConvoImpressionsReducer>;
 export type TrackEventParams = __Infer<typeof TrackEventReducer>;
 export type TrackImpressionsParams = __Infer<typeof TrackImpressionsReducer>;
-export type YieldEngagementParams = __Infer<typeof YieldEngagementReducer>;
 

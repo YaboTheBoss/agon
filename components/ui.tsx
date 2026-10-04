@@ -16,7 +16,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ReactNode, useEffect, useRef, useState } from "react";
-import { bPct, otherSide, sideLabel, type Choice, type CompStatus, type IconName, type Mode, type Side, type Topic } from "@/lib/data";
+import { bPct, otherSide, sideLabel, type Choice, type CompResult, type CompStatus, type IconName, type Mode, type PointAward, type Side, type Topic } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { GoogleButton, useAuth } from "@/lib/auth";
 
@@ -183,7 +183,21 @@ export function PollBar({
 
 type ScoreSide = { name: string; side: Side; label: string; score: number; you?: boolean };
 
-export function ScoreBar({ left, right, status }: { left: ScoreSide; right: ScoreSide; status: CompStatus }) {
+/**
+ * Comp points bar. With `onPickSide`, each half is a button that opens that
+ * side's points breakdown (the chat itself carries no point markers).
+ */
+export function ScoreBar({
+  left,
+  right,
+  status,
+  onPickSide,
+}: {
+  left: ScoreSide;
+  right: ScoreSide;
+  status: CompStatus;
+  onPickSide?: (side: Side) => void;
+}) {
   const total = left.score + right.score;
   const leftPct = total === 0 ? 50 : Math.round((left.score / total) * 100);
   const diff = right.score - left.score;
@@ -202,7 +216,23 @@ export function ScoreBar({ left, right, status }: { left: ScoreSide; right: Scor
         : "All square";
 
   return (
-    <div className="rounded-2xl border-2 border-[#1E1B2E] bg-white p-3 shadow-[3px_3px_0_#1E1B2E]" aria-label={`Score: ${who(left)} ${left.score}, ${who(right)} ${right.score}. ${verdict}`}>
+    <div className="relative rounded-2xl border-2 border-[#1E1B2E] bg-white p-3 shadow-[3px_3px_0_#1E1B2E]" aria-label={`Score: ${who(left)} ${left.score}, ${who(right)} ${right.score}. ${verdict}`}>
+      {onPickSide && (
+        <>
+          <button
+            type="button"
+            onClick={() => onPickSide(left.side)}
+            aria-label={`See ${left.you ? "your" : `${left.name}'s`} points breakdown`}
+            className="absolute inset-y-0 left-0 z-10 w-1/2 rounded-l-2xl hover:bg-[#1E1B2E]/[0.03] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FFD43B]"
+          />
+          <button
+            type="button"
+            onClick={() => onPickSide(right.side)}
+            aria-label={`See ${right.you ? "your" : `${right.name}'s`} points breakdown`}
+            className="absolute inset-y-0 right-0 z-10 w-1/2 rounded-r-2xl hover:bg-[#1E1B2E]/[0.03] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FFD43B]"
+          />
+        </>
+      )}
       <div className="flex items-center gap-2 text-xs font-extrabold">
         <span className="flex min-w-0 flex-1 items-center gap-1.5">
           <Avatar name={left.name} size={26} color={SIDE_COLOR[left.side]} />
@@ -229,7 +259,108 @@ export function ScoreBar({ left, right, status }: { left: ScoreSide; right: Scor
         <span className="shrink-0 font-extrabold text-[#1E1B2E]">{verdict}</span>
         <span className="flex-1 truncate text-right">{right.label}</span>
       </div>
+      {onPickSide && <p className="mt-1 text-center text-[10px] font-bold text-[#8A86A0]">Tap a side to see how its points were earned</p>}
     </div>
+  );
+}
+
+/** Per-side list of point awards, opened from the score bar. */
+export function PointsBreakdown({
+  awards,
+  names,
+  totals,
+  initialSide,
+  you,
+  onClose,
+}: {
+  awards: PointAward[];
+  names: Record<Side, string>;
+  totals: Record<Side, number>;
+  initialSide: Side;
+  /** Which side is the viewer, if they're playing. */
+  you?: Side;
+  onClose: () => void;
+}) {
+  const [side, setSide] = useState<Side>(initialSide);
+  const list = awards.filter((a) => a.side === side);
+  const label = (s: Side) => (s === you ? "You" : names[s]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#1E1B2E]/40 sm:items-center sm:p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="breakdown-title"
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[80dvh] w-full max-w-md flex-col rounded-t-[28px] border-2 border-[#1E1B2E] bg-[#F6F3FF] p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] motion-safe:animate-[rise_.25s_ease-out] sm:rounded-[28px] sm:shadow-[6px_6px_0_#1E1B2E]"
+      >
+        <div className="mb-3 flex items-center">
+          <h2 id="breakdown-title" className={`${displayFont} flex-1 text-2xl`}>
+            Points breakdown
+          </h2>
+          <button type="button" onClick={onClose} aria-label="Close" className="flex h-11 w-11 items-center justify-center rounded-full border-2 border-[#1E1B2E] bg-white">
+            <Icon name="x" />
+          </button>
+        </div>
+        <div role="tablist" aria-label="Side" className="mb-3 grid grid-cols-2 gap-2">
+          {(["a", "b"] as Side[]).map((s) => (
+            <button
+              key={s}
+              role="tab"
+              aria-selected={side === s}
+              onClick={() => setSide(s)}
+              className="min-h-[44px] rounded-full border-2 border-[#1E1B2E] text-sm font-black"
+              style={{ background: side === s ? SIDE_COLOR[s] : "#FFFFFF" }}
+            >
+              {label(s)} · {totals[s]}
+            </button>
+          ))}
+        </div>
+        <ul className="-mx-1 flex-1 space-y-2 overflow-y-auto px-1">
+          {list.length === 0 ? (
+            <li className="rounded-2xl border-2 border-dashed border-[#1E1B2E] bg-white px-4 py-4 text-center text-sm font-semibold text-[#3A3650]">
+              No points yet. The AI checks every 6 messages and only rewards constructive ones.
+            </li>
+          ) : (
+            list.map((a) => (
+              <li key={a.id} className="flex gap-3 rounded-2xl border-2 border-[#1E1B2E] bg-white p-3">
+                <span className={`${displayFont} shrink-0 text-xl leading-none text-[#1F7A55]`}>+{a.points}</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-extrabold">{a.reason}</span>
+                  {a.quote && <span className="mt-0.5 block text-xs text-[#5E5A72]">“{a.quote}”</span>}
+                </span>
+              </li>
+            ))
+          )}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+/** Final comp result: winner by points, then the AI's feedback for each side. */
+export function CompResultCard({ result, names, you }: { result: CompResult; names: Record<Side, string>; you?: Side }) {
+  const label = (s: Side) => (s === you ? "You" : names[s]);
+  const headline =
+    result.winner === "tie"
+      ? `Tie, ${result.scores.a}–${result.scores.b}`
+      : `${label(result.winner)} ${result.winner === you ? "win" : "wins"} on points, ${Math.max(result.scores.a, result.scores.b)}–${Math.min(result.scores.a, result.scores.b)}`;
+  const order: Side[] = you === "b" ? ["b", "a"] : ["a", "b"];
+  return (
+    <section className={`${card} space-y-3 p-4`} aria-label="Result">
+      <p className={`${displayFont} flex items-center gap-2 text-xl`}>
+        <Icon name="trophy" className="h-6 w-6" /> {headline}
+      </p>
+      {order.map((s) =>
+        result.feedback[s] ? (
+          <div key={s} className="rounded-2xl border-2 border-dashed border-[#1E1B2E] px-3 py-2.5" style={{ background: SIDE_TINT[s] }}>
+            <p className="mb-1 flex items-center gap-1 text-[11px] font-extrabold uppercase tracking-wider">
+              <Icon name="sparkle" className="h-3.5 w-3.5" /> {s === you ? "Your feedback" : `Feedback for ${names[s]}`}
+            </p>
+            <p className="whitespace-pre-line text-sm leading-snug text-[#3A3650]">{result.feedback[s]}</p>
+          </div>
+        ) : null
+      )}
+    </section>
   );
 }
 

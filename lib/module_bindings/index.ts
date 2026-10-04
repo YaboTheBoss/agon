@@ -34,7 +34,7 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
-import AdvanceMatchReducer from "./advance_match_reducer";
+import AwardPointsReducer from "./award_points_reducer";
 import BackfillTopicFeaturesReducer from "./backfill_topic_features_reducer";
 import CompleteProfileReducer from "./complete_profile_reducer";
 import CreateTopicReducer from "./create_topic_reducer";
@@ -42,21 +42,19 @@ import DismissNotificationsReducer from "./dismiss_notifications_reducer";
 import GrantServiceReducer from "./grant_service_reducer";
 import JoinQueueReducer from "./join_queue_reducer";
 import LeaveQueueReducer from "./leave_queue_reducer";
-import PassTurnReducer from "./pass_turn_reducer";
 import RemoveDemoDataReducer from "./remove_demo_data_reducer";
 import RevokeServiceReducer from "./revoke_service_reducer";
 import SendMessageReducer from "./send_message_reducer";
+import SetChatResultReducer from "./set_chat_result_reducer";
 import SetChatSummaryReducer from "./set_chat_summary_reducer";
 import SetInterestsReducer from "./set_interests_reducer";
 import SetNameReducer from "./set_name_reducer";
 import SetTopicFeaturesReducer from "./set_topic_features_reducer";
-import SubmitJudgingResultReducer from "./submit_judging_result_reducer";
 import ToggleLikeReducer from "./toggle_like_reducer";
 import TrackConvoEventReducer from "./track_convo_event_reducer";
 import TrackConvoImpressionsReducer from "./track_convo_impressions_reducer";
 import TrackEventReducer from "./track_event_reducer";
 import TrackImpressionsReducer from "./track_impressions_reducer";
-import YieldEngagementReducer from "./yield_engagement_reducer";
 
 // Import all procedure arg schemas
 
@@ -71,6 +69,8 @@ import EntityRow from "./entity_table";
 import MessageRow from "./message_table";
 import NotificationRow from "./notification_table";
 import PlayerRow from "./player_table";
+import PointAwardRow from "./point_award_table";
+import ScoreStateRow from "./score_state_table";
 import TagRow from "./tag_table";
 import TicketRow from "./ticket_table";
 import TopicRow from "./topic_table";
@@ -226,6 +226,31 @@ const tablesSchema = __schema({
       { name: 'player_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, PlayerRow),
+  pointAward: __table({
+    name: 'point_award',
+    indexes: [
+      { accessor: 'chatId', name: 'point_award_chat_id_idx_btree', algorithm: 'btree', columns: [
+        'chatId',
+      ] },
+      { accessor: 'id', name: 'point_award_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'point_award_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, PointAwardRow),
+  scoreState: __table({
+    name: 'score_state',
+    indexes: [
+      { accessor: 'chatId', name: 'score_state_chat_id_idx_btree', algorithm: 'btree', columns: [
+        'chatId',
+      ] },
+    ],
+    constraints: [
+      { name: 'score_state_chat_id_key', constraint: 'unique', columns: ['chatId'] },
+    ],
+  }, ScoreStateRow),
   tag: __table({
     name: 'tag',
     indexes: [
@@ -359,7 +384,7 @@ const tablesSchema = __schema({
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
-  __reducerSchema("advance_match", AdvanceMatchReducer),
+  __reducerSchema("award_points", AwardPointsReducer),
   __reducerSchema("backfill_topic_features", BackfillTopicFeaturesReducer),
   __reducerSchema("complete_profile", CompleteProfileReducer),
   __reducerSchema("create_topic", CreateTopicReducer),
@@ -367,21 +392,19 @@ const reducersSchema = __reducers(
   __reducerSchema("grant_service", GrantServiceReducer),
   __reducerSchema("join_queue", JoinQueueReducer),
   __reducerSchema("leave_queue", LeaveQueueReducer),
-  __reducerSchema("pass_turn", PassTurnReducer),
   __reducerSchema("remove_demo_data", RemoveDemoDataReducer),
   __reducerSchema("revoke_service", RevokeServiceReducer),
   __reducerSchema("send_message", SendMessageReducer),
+  __reducerSchema("set_chat_result", SetChatResultReducer),
   __reducerSchema("set_chat_summary", SetChatSummaryReducer),
   __reducerSchema("set_interests", SetInterestsReducer),
   __reducerSchema("set_name", SetNameReducer),
   __reducerSchema("set_topic_features", SetTopicFeaturesReducer),
-  __reducerSchema("submit_judging_result", SubmitJudgingResultReducer),
   __reducerSchema("toggle_like", ToggleLikeReducer),
   __reducerSchema("track_convo_event", TrackConvoEventReducer),
   __reducerSchema("track_convo_impressions", TrackConvoImpressionsReducer),
   __reducerSchema("track_event", TrackEventReducer),
   __reducerSchema("track_impressions", TrackImpressionsReducer),
-  __reducerSchema("yield_engagement", YieldEngagementReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

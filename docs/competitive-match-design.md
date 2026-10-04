@@ -1,5 +1,7 @@
 # Yaapi Competitive Match Design
 
+> **Superseded (Oct 2026):** comp debates now use free chat with AI points every 6 messages and a winner by points. See [`comp-points-design.md`](comp-points-design.md). Kept for reference.
+
 Status: Working design
 
 This document records the current decisions for Yaapi's competitive, real-time, human-versus-human debate mode. It covers topic selection, matchmaking, timing, turn flow, and the handoff to final judging. The judging rubric and implementation will be specified separately.

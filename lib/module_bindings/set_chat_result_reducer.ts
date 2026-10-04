@@ -12,5 +12,7 @@ import {
 
 export default {
   chatId: __t.u64(),
-  resultJson: __t.string(),
+  summary: __t.string(),
+  feedbackA: __t.string(),
+  feedbackB: __t.string(),
 };

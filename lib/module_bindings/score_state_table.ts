@@ -10,6 +10,8 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
-  chatId: __t.u64(),
-};
+export default __t.row({
+  chatId: __t.u64().primaryKey().name("chat_id"),
+  scoredCount: __t.u32().name("scored_count"),
+  finalized: __t.bool(),
+});

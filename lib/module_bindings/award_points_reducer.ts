@@ -10,6 +10,15 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+import {
+  AwardInput,
+} from "./types";
+
 export default {
   chatId: __t.u64(),
+  fromCount: __t.u32(),
+  throughCount: __t.u32(),
+  get awards() {
+    return __t.array(AwardInput);
+  },
 };
