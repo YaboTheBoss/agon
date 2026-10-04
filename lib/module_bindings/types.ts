@@ -69,6 +69,7 @@ export type Notification = __Infer<typeof Notification>;
 export const Player = __t.object("Player", {
   identity: __t.identity(),
   name: __t.string(),
+  username: __t.string(),
   online: __t.bool(),
   likes: __t.u32(),
   debates: __t.u32(),
@@ -102,6 +103,12 @@ export const Topic = __t.object("Topic", {
   createdAt: __t.timestamp(),
 });
 export type Topic = __Infer<typeof Topic>;
+
+export const Username = __t.object("Username", {
+  name: __t.string(),
+  owner: __t.identity(),
+});
+export type Username = __Infer<typeof Username>;
 
 export const Vote = __t.object("Vote", {
   id: __t.u64(),

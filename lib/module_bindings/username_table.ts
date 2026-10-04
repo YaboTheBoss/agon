@@ -11,13 +11,6 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  identity: __t.identity().primaryKey(),
-  name: __t.string(),
-  username: __t.string(),
-  online: __t.bool(),
-  likes: __t.u32(),
-  debates: __t.u32(),
-  streak: __t.u32(),
-  lastActiveDay: __t.u32().name("last_active_day"),
-  membership: __t.string(),
+  name: __t.string().primaryKey(),
+  owner: __t.identity(),
 });

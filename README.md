@@ -23,6 +23,12 @@ npm install
 (cd spacetimedb && npm install)
 ```
 
+Google sign-in (one-time):
+
+1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → **Create credentials → OAuth client ID** → *Web application*.
+2. Authorized JavaScript origins: `http://localhost:3000` and `http://localhost` (plus your production URL later). No redirect URI needed.
+3. Put the client ID in `.env.local` as `NEXT_PUBLIC_GOOGLE_CLIENT_ID=...` **and** in `GOOGLE_CLIENT_IDS` in `spacetimedb/src/auth.ts`, then `npm run db:publish`.
+
 Then, in two terminals:
 
 ```bash
@@ -43,7 +49,7 @@ The first publish seeds categories, topics, demo players and a few chats.
 
 ## How it works
 
-- **Identity:** each browser gets an anonymous SpacetimeDB identity (token in `localStorage`) and a random name, editable on the profile page.
+- **Sign-in:** Google. The Google ID token is the SpacetimeDB login, so the same Google account is the same player on every device (`lib/auth.tsx` on the client, `spacetimedb/src/auth.ts` on the server). Signed-out visitors connect anonymously and can browse; every write reducer requires a Google sign-in for this app's client ID.
 - **Matchmaking:** `joinQueue` records your vote and pairs you with someone waiting on the other side of the same topic + mode (exact opposites first, then "Either" pickers, oldest first). If nobody's waiting you stay in the queue — even after closing the app — and get a "You got paired with another user!" notification when someone matches you. Not everyone gets paired: when one side is the big majority, some of them just wait.
 - **Comp mode:** turn-based, each message is scored server-side (keyword heuristic for now — an AI moderator is the planned upgrade), and the chat ends after 12 messages.
 

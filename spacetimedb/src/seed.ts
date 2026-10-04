@@ -139,7 +139,8 @@ export function seed(ctx: Ctx) {
   PLAYERS.forEach(([name, likes, debates, streak], i) => {
     const identity = new Identity(BigInt(i + 1));
     players.set(name, identity);
-    ctx.db.player.insert({ identity, name, online: false, likes, debates, streak, lastActiveDay: 0, membership: 'Free' });
+    ctx.db.username.insert({ name: name.toLowerCase(), owner: identity });
+    ctx.db.player.insert({ identity, name, username: name.toLowerCase(), online: false, likes, debates, streak, lastActiveDay: 0, membership: 'Free' });
   });
   const system = Identity.zero();
 

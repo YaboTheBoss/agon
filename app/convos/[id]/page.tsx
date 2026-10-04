@@ -10,9 +10,11 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Choice } from "@/lib/data";
+import { useState } from "react";
 import { useStore } from "@/lib/store";
+import { useAuth } from "@/lib/auth";
 import {
-  AISummary, Avatar, Icon, Loading, ModeTag, PairingOverlay, PageHeader, PollBar, SIDE_COLOR, SIDE_TINT, ScoreBar, displayFont, press, usePairing,
+  AISummary, Avatar, Icon, Loading, ModeTag, PairingOverlay, PageHeader, PollBar, SIDE_COLOR, SIDE_TINT, ScoreBar, SignInDialog, displayFont, press, usePairing,
 } from "@/components/ui";
 
 export default function ConvoPage() {
@@ -21,6 +23,8 @@ export default function ConvoPage() {
   const convo = convoById(id);
   const topic = convo ? topicById.get(convo.topicId) : undefined;
   const { pairing, startPairing, cancelPairing } = usePairing();
+  const { status } = useAuth();
+  const [askSignIn, setAskSignIn] = useState(false);
 
   if (!ready) {
     return (
@@ -127,7 +131,7 @@ export default function ConvoPage() {
             <PollBar topic={topic} picked={(myVotes.get(topic.id) as Choice | undefined) ?? null} onPick={(choice) => startPairing({ topic, choice, mode: convo.mode })} />
           </div>
           <button
-            onClick={() => actions.toggleLike(convo.id).catch(console.error)}
+            onClick={() => (status === "signed-in" ? actions.toggleLike(convo.id).catch(console.error) : setAskSignIn(true))}
             aria-pressed={liked}
             aria-label={liked ? "Unlike conversation" : "Like conversation"}
             className={`flex h-[56px] min-w-[60px] shrink-0 flex-col items-center justify-center rounded-2xl border-2 border-[#1E1B2E] text-xs font-black shadow-[3px_3px_0_#1E1B2E] ${press} ${
@@ -141,6 +145,7 @@ export default function ConvoPage() {
       </div>
 
       {pairing && <PairingOverlay pairing={pairing} onCancel={cancelPairing} />}
+      {askSignIn && <SignInDialog why="Sign in with Google to like conversations." onClose={() => setAskSignIn(false)} />}
     </div>
   );
 }

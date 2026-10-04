@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Lilita_One, Nunito } from "next/font/google";
 import BottomNav from "@/components/BottomNav";
 import PairToast from "@/components/PairToast";
+import ProfileGate from "@/components/ProfileGate";
+import { AuthProvider } from "@/lib/auth";
 import { SpacetimeProvider } from "@/lib/store";
 import "./globals.css";
 
@@ -24,13 +26,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body className="bg-[#F6F3FF] font-[family-name:var(--font-body)] text-[#1E1B2E] antialiased">
-        <SpacetimeProvider>
-          <div className="min-h-[100dvh] bg-[#F6F3FF]">
-            {children}
-            <BottomNav />
-            <PairToast />
-          </div>
-        </SpacetimeProvider>
+        <AuthProvider>
+          <SpacetimeProvider>
+            <div className="min-h-[100dvh] bg-[#F6F3FF]">
+              {children}
+              <BottomNav />
+              <PairToast />
+              <ProfileGate />
+            </div>
+          </SpacetimeProvider>
+        </AuthProvider>
       </body>
     </html>
   );

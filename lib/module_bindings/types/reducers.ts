@@ -6,6 +6,7 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
+import CompleteProfileReducer from "../complete_profile_reducer";
 import CreateTopicReducer from "../create_topic_reducer";
 import DismissNotificationsReducer from "../dismiss_notifications_reducer";
 import JoinQueueReducer from "../join_queue_reducer";
@@ -14,6 +15,7 @@ import SendMessageReducer from "../send_message_reducer";
 import SetNameReducer from "../set_name_reducer";
 import ToggleLikeReducer from "../toggle_like_reducer";
 
+export type CompleteProfileParams = __Infer<typeof CompleteProfileReducer>;
 export type CreateTopicParams = __Infer<typeof CreateTopicReducer>;
 export type DismissNotificationsParams = __Infer<typeof DismissNotificationsReducer>;
 export type JoinQueueParams = __Infer<typeof JoinQueueReducer>;

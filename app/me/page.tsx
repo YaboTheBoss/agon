@@ -9,7 +9,8 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { otherSide, type Mode, type MyChat } from "@/lib/data";
 import { useStore } from "@/lib/store";
-import { Avatar, Icon, Loading, ModeTag, PageHeader, SIDE_COLOR, StatusChip, card, displayFont, press } from "@/components/ui";
+import { useAuth } from "@/lib/auth";
+import { Avatar, Icon, Loading, ModeTag, PageHeader, SignInCard, SIDE_COLOR, StatusChip, card, displayFont, press } from "@/components/ui";
 
 type Filter = "all" | Mode;
 
@@ -37,10 +38,22 @@ function ChatStatus({ c }: { c: MyChat }) {
 export default function MyChatsPage() {
   const [filter, setFilter] = useState<Filter>("all");
   const { ready, me, myChats, myTickets, actions } = useStore();
+  const { status, signOut } = useAuth();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
   const chats = myChats.filter((c) => filter === "all" || c.mode === filter);
+
+  if (status === "signed-out") {
+    return (
+      <>
+        <PageHeader title="My playground" />
+        <main className="mx-auto max-w-2xl px-4 pt-5">
+          <SignInCard why="Sign in with Google to keep your chats, likes and streak on every device." />
+        </main>
+      </>
+    );
+  }
 
   if (!ready || !me) {
     return (
@@ -103,7 +116,9 @@ export default function MyChatsPage() {
               </p>
             )}
             {nameError && <p role="alert" className="mt-1 text-xs font-bold text-[#A3103F]">{nameError}</p>}
-            <p className="text-sm font-semibold text-[#5E5A72]">{me.debates} chats · {me.streak}-day streak</p>
+            <p className="truncate text-sm font-semibold text-[#5E5A72]">
+              @{me.username} · {me.debates} chats · {me.streak}-day streak
+            </p>
             <div className="mt-2 flex flex-wrap gap-2 text-sm font-extrabold">
               <span className="flex items-center gap-1 rounded-full border-2 border-[#1E1B2E] bg-[#FF8FB1] px-2.5 py-0.5">
                 <Icon name="heart" className="h-4 w-4" /> {me.likes} likes
@@ -197,6 +212,12 @@ export default function MyChatsPage() {
             ))}
           </ul>
         </section>
+        <button
+          onClick={signOut}
+          className={`mx-auto block min-h-[44px] rounded-full border-2 border-[#1E1B2E] bg-white px-5 text-sm font-extrabold shadow-[2px_2px_0_#1E1B2E] ${press}`}
+        >
+          Sign out
+        </button>
       </main>
     </>
   );

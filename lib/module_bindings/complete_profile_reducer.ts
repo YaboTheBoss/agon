@@ -10,14 +10,7 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default __t.row({
-  identity: __t.identity().primaryKey(),
-  name: __t.string(),
+export default {
   username: __t.string(),
-  online: __t.bool(),
-  likes: __t.u32(),
-  debates: __t.u32(),
-  streak: __t.u32(),
-  lastActiveDay: __t.u32().name("last_active_day"),
-  membership: __t.string(),
-});
+  displayName: __t.string(),
+};

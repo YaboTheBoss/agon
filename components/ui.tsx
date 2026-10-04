@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { bPct, otherSide, sideLabel, type Choice, type CompStatus, type IconName, type Mode, type Side, type Topic } from "@/lib/data";
 import { useStore } from "@/lib/store";
+import { GoogleButton, useAuth } from "@/lib/auth";
 
 /* ---------------- style tokens ---------------- */
 
@@ -260,10 +261,54 @@ export function BackButton({ href }: { href: string }) {
 
 export function Loading({ label = "Loading…" }: { label?: string }) {
   const { connectionError, connected } = useStore();
+  const { status, signOut } = useAuth();
   return (
-    <p role="status" className="p-6 text-center text-sm font-semibold text-[#5E5A72]">
-      {connectionError || !connected ? "Connecting to the server…" : label}
-    </p>
+    <div role="status" className="p-6 text-center text-sm font-semibold text-[#5E5A72]">
+      <p>{connectionError || !connected ? "Connecting to the server…" : label}</p>
+      {/* Escape hatch if the server won't accept this Google sign-in. */}
+      {connectionError && status === "signed-in" && (
+        <button onClick={signOut} className="mt-3 font-extrabold text-[#1E1B2E] underline">
+          Sign out and browse
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- sign in ---------------- */
+
+/** Inline "sign in to play" panel (profile page, chat page). */
+export function SignInCard({ why = "Sign in to pick sides, chat and collect likes." }: { why?: string }) {
+  return (
+    <section className={`${card} p-5 text-center`}>
+      <p className={`${displayFont} text-2xl`}>Join the debate</p>
+      <p className="mb-4 mt-1 text-sm font-semibold text-[#5E5A72]">{why}</p>
+      <GoogleButton />
+    </section>
+  );
+}
+
+/** Modal version, for actions that need an account (pick a side, like, create). */
+export function SignInDialog({ why, onClose }: { why: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#1E1B2E]/40 p-3 sm:items-center" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="signin-title"
+        onClick={(e) => e.stopPropagation()}
+        className={`${card} w-full max-w-sm p-6 text-center motion-safe:animate-[rise_.25s_ease-out]`}
+      >
+        <h2 id="signin-title" className={`${displayFont} text-2xl`}>
+          Sign in to play
+        </h2>
+        <p className="mb-4 mt-1 text-sm text-[#5E5A72]">{why}</p>
+        <GoogleButton />
+        <button onClick={onClose} className={`mt-4 min-h-[44px] w-full rounded-full border-2 border-[#1E1B2E] bg-white text-sm font-extrabold shadow-[3px_3px_0_#1E1B2E] ${press}`}>
+          Not now
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -285,6 +330,14 @@ const OPEN_CHAT_AFTER_MS = 1200;
  *    notification once someone picks the other side
  */
 export function PairingOverlay({ pairing, onCancel }: { pairing: Pairing; onCancel: () => void }) {
+  const { status } = useAuth();
+  if (status !== "signed-in") {
+    return <SignInDialog why="Sign in with Google to pick a side and get paired with someone from the other one." onClose={onCancel} />;
+  }
+  return <PairingFlow pairing={pairing} onCancel={onCancel} />;
+}
+
+function PairingFlow({ pairing, onCancel }: { pairing: Pairing; onCancel: () => void }) {
   const router = useRouter();
   const { actions, myTickets, myChats } = useStore();
   const { topic, choice, mode } = pairing;
