@@ -56,11 +56,15 @@ The first publish seeds categories, topics, demo players and a few chats.
 
 ### Topic tagging
 
-Topics carry 1–4 tags from one app-wide list (`TAGS` in `spacetimedb/src/recommend.ts`), a tone and named entities. New topics are tagged by keyword rules when created. An AI tagger replaces those through the `set_topic_features` reducer, which only registered service identities may call:
+Topics carry 1–4 tags from one app-wide list (`TAGS` in `spacetimedb/src/recommend.ts`), a tone and named entities. New topics get keyword tags when created; right after, the app calls `POST /api/tagging`, which asks Gemini (`lib/tagging/`) for better tags and entities and submits them through `set_topic_features`. The database only accepts that call from registered service identities, and the route reads topics from the database (never from the request), so users can trigger tagging but can't influence it. Each topic is AI-tagged once; seed topics keep their hand-written tags.
 
-1. The tagging server connects to SpacetimeDB with its own token (keep it in a server-only env var) and reads its identity.
-2. The admin registers it once: `spacetime call <db> grant_service '{"__identity__":"0x<identity hex>"}' '"ai-tagger"' --server <server>`.
-3. On each new topic, it calls `set_topic_features(topicId, tags, tone, entities)`; unknown tags, bad tones or weights outside 0–1 are refused.
+One-time setup per database (shown for production):
+
+1. Create the service identity: `curl -X POST https://maincloud.spacetimedb.com/v1/identity` → note `identity` and `token`.
+2. Register it (admin only): `spacetime call yaapi grant_service '{"__identity__":"0x<identity>"}' '"ai-tagger"' --server maincloud`.
+3. In Vercel, add `SPACETIMEDB_SERVICE_TOKEN=<token>` (server-only, never `NEXT_PUBLIC_`) next to `GEMINI_API_KEY`, then redeploy.
+
+Locally, use `http://127.0.0.1:3010` and `--server http://127.0.0.1:3010 yaapi-dev`, and put the token in `.env.local`. Without these, topics simply keep their keyword tags.
 
 After deploying this to an existing database (where `init` doesn't re-run), the admin runs `spacetime call <db> backfill_topic_features --server <server>` once to create the tag list and tag every existing topic.
 

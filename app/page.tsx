@@ -14,6 +14,7 @@ import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { AISummary, Avatar, Icon, Loading, Logo, ModeTag, PairingOverlay, SignInDialog, StatusChip, card, displayFont, press, usePairing } from "@/components/ui";
 import { TopicCard } from "@/components/TopicCard";
+import { requestTopicTagging } from "@/lib/tagging/client";
 
 type Tab = "start" | "convos";
 
@@ -97,6 +98,7 @@ function ConvoCard({ c }: { c: Convo }) {
 
 function CreateSheet({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const { categories, actions } = useStore();
+  const { token } = useAuth();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -111,7 +113,10 @@ function CreateSheet({ onClose, onCreated }: { onClose: () => void; onCreated: (
     setError(null);
     actions
       .createTopic({ title: title.trim(), sideA: sideA.trim(), sideB: sideB.trim(), category })
-      .then(onCreated)
+      .then(() => {
+        requestTopicTagging(token);
+        onCreated();
+      })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Couldn't post that");
         setSaving(false);
