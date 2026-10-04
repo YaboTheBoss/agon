@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // SpacetimeDB module (own tsconfig) and generated client bindings.
+    "spacetimedb/**",
+    "lib/module_bindings/**",
   ]),
 ]);
 

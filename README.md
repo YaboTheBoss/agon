@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Agon — Debate Battleground
 
-## Getting Started
+Pick a side on a topic, get paired with someone from the other side, and argue (nicely).
+Next.js frontend + [SpacetimeDB](https://spacetimedb.com) backend.
 
-First, run the development server:
+## Layout
+
+| Path | What |
+|------|------|
+| `app/`, `components/` | Next.js pages and UI kit |
+| `lib/store.tsx` | SpacetimeDB connection + live data hooks (`useStore()`) |
+| `lib/data.ts` | UI types and helpers |
+| `lib/module_bindings/` | Generated client bindings — **don't edit**, run `npm run db:generate` |
+| `spacetimedb/src/` | The SpacetimeDB module: tables, reducers, seed data |
+
+## Running locally
+
+One-time setup:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+curl -sSf https://install.spacetimedb.com | sh   # installs the `spacetime` CLI
+npm install
+(cd spacetimedb && npm install)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then, in two terminals:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run db:start      # local SpacetimeDB on 127.0.0.1:3010 (keep running)
+npm run db:publish    # first time, and after every change in spacetimedb/
+npm run dev           # http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The first publish seeds categories, topics, demo players and a few chats.
 
-## Learn More
+## Changing the backend
 
-To learn more about Next.js, take a look at the following resources:
+1. Edit `spacetimedb/src/index.ts`.
+2. `npm run db:publish` (or `npm run db:reset` to wipe data and re-seed; needed for breaking schema changes).
+3. `npm run db:generate` to refresh `lib/module_bindings/`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+`npm run db:logs` tails the module's logs.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## How it works
 
-## Deploy on Vercel
+- **Identity:** each browser gets an anonymous SpacetimeDB identity (token in `localStorage`) and a random name, editable on the profile page.
+- **Matchmaking:** `joinQueue` records your vote and pairs you with someone waiting on the other side of the same topic + mode (exact opposites first, then "Either" pickers, oldest first). If nobody's waiting you stay in the queue — even after closing the app — and get a "You got paired with another user!" notification when someone matches you. Not everyone gets paired: when one side is the big majority, some of them just wait.
+- **Comp mode:** turn-based, each message is scored server-side (keyword heuristic for now — an AI moderator is the planned upgrade), and the chat ends after 12 messages.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Config (optional, see `.env.example`): `NEXT_PUBLIC_SPACETIMEDB_URI`, `NEXT_PUBLIC_SPACETIMEDB_DB`.

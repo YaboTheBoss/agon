@@ -6,14 +6,25 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { categoryBySlug, convosForTopic, topicsForCategory } from "@/lib/data";
-import { Icon, PairingOverlay, PageHeader, PollBar, card, displayFont, usePairing } from "@/components/ui";
+import { topicsForCategory, type Choice } from "@/lib/data";
+import { useStore } from "@/lib/store";
+import { Icon, Loading, PairingOverlay, PageHeader, PollBar, card, displayFont, usePairing } from "@/components/ui";
 
 export default function CategoryPage() {
   const { slug } = useParams<{ slug: string }>();
+  const { ready, topics: allTopics, categoryBySlug, convosForTopic, myVotes } = useStore();
   const cat = categoryBySlug(slug);
-  const topics = topicsForCategory(slug);
+  const topics = topicsForCategory(allTopics, slug);
   const { pairing, startPairing, cancelPairing } = usePairing();
+
+  if (!ready) {
+    return (
+      <>
+        <PageHeader title="Category" back="/categories" />
+        <Loading />
+      </>
+    );
+  }
 
   if (!cat) {
     return (
@@ -62,7 +73,7 @@ export default function CategoryPage() {
                     </p>
                   </span>
                 </div>
-                <PollBar topic={t} onPick={(choice) => startPairing({ topic: t, choice, mode: "casual" })} />
+                <PollBar topic={t} picked={(myVotes.get(t.id) as Choice | undefined) ?? null} onPick={(choice) => startPairing({ topic: t, choice, mode: "casual" })} />
               </li>
             );
           })}
