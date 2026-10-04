@@ -55,3 +55,36 @@ export function normalizeSummary(raw: unknown): string {
   const lastStop = cut.lastIndexOf(". ");
   return lastStop > 200 ? cut.slice(0, lastStop + 1) : `${cut.slice(0, 597)}…`;
 }
+
+export type BatchAward = { messageId: string; points: number; reason: string };
+
+/**
+ * Model output → awards the database will accept: only messages in the batch,
+ * one award per message, whole points 0–5, a short reason. The server
+ * re-applies the per-side batch cap, so this is a first line of defence.
+ */
+export function normalizeAwards(raw: unknown, batchIds: ReadonlySet<string>): BatchAward[] {
+  const list = raw && typeof raw === "object" && Array.isArray((raw as Record<string, unknown>).awards) ? ((raw as Record<string, unknown>).awards as unknown[]) : null;
+  if (!list) throw new InvalidTaggingError("No awards in model output");
+  const seen = new Set<string>();
+  return list.flatMap((a) => {
+    if (!a || typeof a !== "object") return [];
+    const { messageId, points, reason } = a as Record<string, unknown>;
+    const id = String(messageId ?? "");
+    if (!batchIds.has(id) || seen.has(id)) return [];
+    seen.add(id);
+    const p = typeof points === "number" && Number.isFinite(points) ? Math.min(5, Math.max(0, Math.round(points))) : 0;
+    const r = typeof reason === "string" ? reason.trim().replace(/\s+/g, " ").slice(0, 80) : "";
+    return p > 0 ? [{ messageId: id, points: p, reason: r || "Constructive point" }] : [];
+  });
+}
+
+export type Feedback = { summary: string; feedbackA: string; feedbackB: string };
+
+export function normalizeFeedback(raw: unknown): Feedback {
+  const r = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const text = (v: unknown, max: number) => (typeof v === "string" ? v.trim().replace(/[ \t]+/g, " ").slice(0, max) : "");
+  const out = { summary: text(r.summary, 600), feedbackA: text(r.feedbackA, 1200), feedbackB: text(r.feedbackB, 1200) };
+  if (!out.summary || !out.feedbackA || !out.feedbackB) throw new InvalidTaggingError("Incomplete feedback in model output");
+  return out;
+}

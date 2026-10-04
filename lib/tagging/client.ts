@@ -21,3 +21,17 @@ export function requestAiUpkeep(googleIdToken: string | undefined) {
   lastUpkeep = now;
   requestTopicTagging(googleIdToken);
 }
+
+const SCORING_EVERY_MS = 15_000;
+let lastScoring = 0;
+
+/**
+ * From a comp chat: ask the AI service to score waiting batches (or finish an
+ * ended debate). Callers only call this when there's work; throttled per tab.
+ */
+export function requestScoring(googleIdToken: string | undefined) {
+  const now = Date.now();
+  if (!googleIdToken || now - lastScoring < SCORING_EVERY_MS) return;
+  lastScoring = now;
+  requestTopicTagging(googleIdToken);
+}

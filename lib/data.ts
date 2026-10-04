@@ -9,7 +9,6 @@ export type Side = "a" | "b";
 export type Choice = Side | "either";
 /** Live / ended. Comp debates end after judging; casual chats end 2 days after their first message. */
 export type CompStatus = "live" | "ended";
-export type CompPhase = "opening" | "engagement" | "closing" | "judging" | "ended";
 
 export type Topic = {
   id: string;
@@ -42,7 +41,11 @@ export type Convo = {
   likes: number;
   mode: Mode;
   status?: CompStatus;
-  scores?: { a: number; b: number }; // comp only
+  scores?: { a: number; b: number }; // comp only: points so far
+  /** Comp only: every point award, both sides (the breakdown behind the score bar). */
+  awards?: PointAward[];
+  /** Comp only, once ended and fully scored: winner by points + AI feedback. */
+  result?: CompResult;
   messages: ChatMessage[];
   lastAt: number;
   /** You're one of the two players (spectator ranking leaves these out). */
@@ -54,7 +57,12 @@ export type Convo = {
 };
 
 /** A conversation YOU are in (the typing view). */
-export type MyMsg = { id: string; from: "me" | "them"; text: string; phase?: string };
+export type MyMsg = { id: string; from: "me" | "them"; text: string };
+
+/** One comp point award: which side, how many points, why, and the message that earned it. */
+export type PointAward = { id: string; side: Side; points: number; reason: string; messageId: string; quote: string };
+/** Final comp result: decided by points; feedback written by the AI once the chat ends. */
+export type CompResult = { winner: Side | "tie"; scores: { a: number; b: number }; feedback: { a: string; b: string } };
 export type MyChat = {
   id: string;
   topic: Pick<Topic, "id" | "title" | "sideA" | "sideB">;
@@ -62,15 +70,12 @@ export type MyChat = {
   mySide: Side;
   mode: Mode;
   status?: CompStatus;
-  scores?: { me: number; them: number }; // comp only
+  scores?: { me: number; them: number }; // comp only: points so far
+  awards?: PointAward[]; // comp only
+  result?: CompResult; // comp only, once final
+  /** Comp only: how many messages the AI has scored so far (it scores in batches of 6). */
+  scoredCount?: number;
   turn: "me" | "them";
-  phase?: CompPhase;
-  phaseStartedAt?: number;
-  engagementStarter?: Side;
-  remaining?: { me: number; them: number };
-  submitted?: { me: boolean; them: boolean };
-  yieldedSide?: Side;
-  resultJson?: string;
   messages: MyMsg[];
   createdAt: number;
   lastAt: number;

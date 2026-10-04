@@ -155,3 +155,21 @@ body:has(.feed-theme[data-mode="comp"]),
   from { opacity: 0; transform: translateY(16px) scale(0.97); }
   to { opacity: 1; transform: none; }
 }
+
+/*
+ * iPhone Safari zooms the page into any text field smaller than 16px when it's
+ * focused (and the zoomed page then slides sideways). Keeping every field at
+ * 16px+ stops that without disabling pinch-zoom for people who need it.
+ * Unlayered, so it wins over Tailwind's text-size utilities on inputs.
+ */
+input,
+textarea,
+select {
+  font-size: max(16px, 1em);
+}
+
+/* Don't let iOS inflate text sizes when the phone rotates. */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}

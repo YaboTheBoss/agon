@@ -14,7 +14,7 @@ import { SpacetimeDBProvider, useReducer, useSpacetimeDB, useTable } from "space
 import type { Identity } from "spacetimedb";
 import { DbConnection, reducers, tables } from "@/lib/module_bindings";
 import { tokenExpired, useAuth } from "@/lib/auth";
-import type { Category, Choice, Convo, IconName, Leader, Mode, MyChat, Side, Topic } from "@/lib/data";
+import type { Category, Choice, CompResult, Convo, IconName, Leader, Mode, MyChat, PointAward, Side, Topic } from "@/lib/data";
 import { decayScore, rankConvos, rankFeed, type ConvoMemoryRow, type FeedEntity, type FeedInputs, type MemoryRow } from "@/lib/recommend";
 
 export type QueuedTicket = { id: string; topicId: string; title: string; choice: Choice; mode: Mode; since: number };
@@ -60,13 +60,13 @@ export function SpacetimeProvider({ children }: { children: ReactNode }) {
 const ms = (ts: { microsSinceUnixEpoch: bigint }) => Number(ts.microsSinceUnixEpoch / 1000n);
 const same = (a: Identity | undefined, b: Identity | undefined) => !!a && !!b && a.isEqual(b);
 const pct = (n: number, total: number) => (total === 0 ? 0 : Math.round((n / total) * 100));
-const panelVotes = (json: string): { a: number; b: number } | undefined => {
+/** The final comp result written by set_chat_result (version 2: winner by points + feedback). */
+const parseResult = (json: string): CompResult | undefined => {
   if (!json) return undefined;
   try {
-    const counts = JSON.parse(json)?.panel?.voteCounts;
-    return typeof counts?.player_a === "number" && typeof counts?.player_b === "number"
-      ? { a: counts.player_a, b: counts.player_b }
-      : undefined;
+    const r = JSON.parse(json);
+    if (r?.version !== 2) return undefined;
+    return { winner: r.winner, scores: r.scores, feedback: { a: r.feedback?.a ?? "", b: r.feedback?.b ?? "" } };
   } catch {
     return undefined;
   }
@@ -111,6 +111,8 @@ function useBuildStore() {
   const [memoryRows, memoryReady] = useTable(tables.topicMemory);
   const [convoMemoryRows, convoMemoryReady] = useTable(tables.convoMemory);
   const [chatStatsRows, chatStatsReady] = useTable(tables.chatStats);
+  const [awardRows] = useTable(tables.pointAward);
+  const [scoreStateRows] = useTable(tables.scoreState);
 
   const ready = playersReady && categoriesReady && topicsReady && chatsReady && messagesReady;
 
@@ -122,10 +124,6 @@ function useBuildStore() {
   const createTopic = useReducer(reducers.createTopic);
   const setName = useReducer(reducers.setName);
   const completeProfile = useReducer(reducers.completeProfile);
-  const advanceMatch = useReducer(reducers.advanceMatch);
-  const passTurn = useReducer(reducers.passTurn);
-  const yieldEngagement = useReducer(reducers.yieldEngagement);
-  const submitJudgingResult = useReducer(reducers.submitJudgingResult);
   const trackEvent = useReducer(reducers.trackEvent);
   const trackImpressions = useReducer(reducers.trackImpressions);
   const setInterests = useReducer(reducers.setInterests);
@@ -163,6 +161,17 @@ function useBuildStore() {
     }
     for (const list of messagesByChat.values()) {
       list.sort((x, y) => (x.sentAt.microsSinceUnixEpoch === y.sentAt.microsSinceUnixEpoch ? Number(x.id - y.id) : x.sentAt.microsSinceUnixEpoch < y.sentAt.microsSinceUnixEpoch ? -1 : 1));
+    }
+
+    const scoredByChat = new Map(scoreStateRows.map((r) => [r.chatId, r.scoredCount]));
+    // Comp point awards per chat, newest first, each with a quote of the message that earned it.
+    const messageText = new Map(messageRows.map((m) => [m.id, m.text]));
+    const awardsByChat = new Map<bigint, PointAward[]>();
+    for (const a of [...awardRows].sort((x, y) => Number(y.id - x.id))) {
+      const text = messageText.get(a.messageId) ?? "";
+      const list = awardsByChat.get(a.chatId) ?? [];
+      list.push({ id: a.id.toString(), side: a.side as Side, points: a.points, reason: a.reason, messageId: a.messageId.toString(), quote: text.length > 90 ? `${text.slice(0, 89)}…` : text });
+      awardsByChat.set(a.chatId, list);
     }
 
     const mine = chatRows.filter((c) => same(c.a, identity) || same(c.b, identity));
@@ -217,7 +226,9 @@ function useBuildStore() {
         likes: c.likes,
         mode: c.mode as Mode,
         status: c.status as "live" | "ended",
-        scores: c.mode === "comp" ? (panelVotes(c.resultJson) ?? { a: 0, b: 0 }) : undefined,
+        scores: c.mode === "comp" ? { a: c.scoreA, b: c.scoreB } : undefined,
+        awards: c.mode === "comp" ? awardsByChat.get(c.id) ?? [] : undefined,
+        result: c.mode === "comp" ? parseResult(c.resultJson) : undefined,
         messages: (messagesByChat.get(c.id) ?? []).map((m) => ({ id: m.id.toString(), side: m.side as Side, text: m.text })),
         lastAt: ms(c.lastAt),
         mine: same(c.a, identity) || same(c.b, identity),
@@ -239,32 +250,15 @@ function useBuildStore() {
           mySide,
           mode: c.mode as Mode,
           status: c.status as "live" | "ended",
-          scores: c.mode === "comp" ? (() => {
-            const votes = panelVotes(c.resultJson) ?? { a: 0, b: 0 };
-            return { me: mySide === "a" ? votes.a : votes.b, them: mySide === "a" ? votes.b : votes.a };
-          })() : undefined,
-          turn: c.mode === "comp"
-            ? (c.currentTurn === mySide ? ("me" as const) : ("them" as const))
-            : (last && same(last.sender, identity) ? ("them" as const) : ("me" as const)),
-          phase: c.mode === "comp" ? (c.phase as MyChat["phase"]) : undefined,
-          phaseStartedAt: c.mode === "comp" ? ms(c.phaseStartedAt) : undefined,
-          engagementStarter: c.mode === "comp" ? (c.engagementStarter as Side) : undefined,
-          remaining: c.mode === "comp" ? {
-            me: Number(mySide === "a" ? c.remainingA : c.remainingB) / 1000,
-            them: Number(mySide === "a" ? c.remainingB : c.remainingA) / 1000,
-          } : undefined,
-          submitted: c.mode === "comp" ? {
-            me: c.phase === "opening" ? (mySide === "a" ? c.openingA : c.openingB) : (mySide === "a" ? c.closingA : c.closingB),
-            them: c.phase === "opening" ? (mySide === "a" ? c.openingB : c.openingA) : (mySide === "a" ? c.closingB : c.closingA),
-          } : undefined,
-          yieldedSide: c.yieldedSide ? (c.yieldedSide as Side) : undefined,
-          resultJson: c.resultJson || undefined,
+          scores: c.mode === "comp" ? { me: mySide === "a" ? c.scoreA : c.scoreB, them: mySide === "a" ? c.scoreB : c.scoreA } : undefined,
+          awards: c.mode === "comp" ? awardsByChat.get(c.id) ?? [] : undefined,
+          result: c.mode === "comp" ? parseResult(c.resultJson) : undefined,
+          scoredCount: c.mode === "comp" ? scoredByChat.get(c.id) ?? 0 : undefined,
+          turn: last && same(last.sender, identity) ? ("them" as const) : ("me" as const),
           messages: msgs.map((m) => ({
             id: m.id.toString(),
             from: same(m.sender, identity) ? ("me" as const) : ("them" as const),
             text: m.text,
-            pts: m.pts,
-            phase: m.phase,
           })),
           createdAt: ms(c.createdAt),
           lastAt: ms(c.lastAt),
@@ -303,7 +297,7 @@ function useBuildStore() {
       .sort((x, y) => y.at - x.at);
 
     return { me, categories, topics, topicById, convos, myChats, leaders, likedChatIds, myVotes, myTickets, notifications, nameOf };
-  }, [identity, playerRows, categoryRows, topicRows, chatRows, messageRows, likeRows, voteRows, ticketRows, notificationRows]);
+  }, [identity, playerRows, categoryRows, topicRows, chatRows, messageRows, likeRows, voteRows, ticketRows, notificationRows, awardRows, scoreStateRows]);
 
   // Personalised feed order (lib/recommend.ts). Recomputed as data changes; the feed
   // page snapshots it on open so cards don't jump around while you scroll.
@@ -426,10 +420,6 @@ function useBuildStore() {
       createTopic: (args: { title: string; sideA: string; sideB: string; category: string }) => createTopic(args),
       setName: (name: string) => setName({ name }),
       completeProfile: (username: string, displayName: string) => completeProfile({ username, displayName }),
-      advanceMatch: (chatId: string) => advanceMatch({ chatId: BigInt(chatId) }),
-      passTurn: (chatId: string) => passTurn({ chatId: BigInt(chatId) }),
-      yieldEngagement: (chatId: string) => yieldEngagement({ chatId: BigInt(chatId) }),
-      submitJudgingResult: (chatId: string, resultJson: string) => submitJudgingResult({ chatId: BigInt(chatId), resultJson }),
       /** Opening a topic or conversation ("open"), or reading one for 20 s+ ("read"). Callers check `canTrack` first. */
       trackEvent: (topicId: string, kind: "open" | "read") => trackEvent({ topicId: BigInt(topicId), kind }).catch(() => {}),
       setInterests: (interests: string[]) => setInterests({ interests }),
@@ -438,7 +428,7 @@ function useBuildStore() {
       trackConvoEvent: (chatId: string, kind: "open" | "read") => trackConvoEvent({ chatId: BigInt(chatId), kind }).catch(() => {}),
       reportConvoImpression,
     }),
-    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName, completeProfile, advanceMatch, passTurn, yieldEngagement, submitJudgingResult, trackEvent, setInterests, reportImpression, trackConvoEvent, reportConvoImpression]
+    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName, completeProfile, trackEvent, setInterests, reportImpression, trackConvoEvent, reportConvoImpression]
   );
 
   return {
