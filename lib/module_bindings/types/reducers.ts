@@ -27,6 +27,7 @@ import TrackConvoEventReducer from "../track_convo_event_reducer";
 import TrackConvoImpressionsReducer from "../track_convo_impressions_reducer";
 import TrackEventReducer from "../track_event_reducer";
 import TrackImpressionsReducer from "../track_impressions_reducer";
+import YieldDebateReducer from "../yield_debate_reducer";
 
 export type AwardPointsParams = __Infer<typeof AwardPointsReducer>;
 export type BackfillTopicFeaturesParams = __Infer<typeof BackfillTopicFeaturesReducer>;
@@ -49,4 +50,5 @@ export type TrackConvoEventParams = __Infer<typeof TrackConvoEventReducer>;
 export type TrackConvoImpressionsParams = __Infer<typeof TrackConvoImpressionsReducer>;
 export type TrackEventParams = __Infer<typeof TrackEventReducer>;
 export type TrackImpressionsParams = __Infer<typeof TrackImpressionsReducer>;
+export type YieldDebateParams = __Infer<typeof YieldDebateReducer>;
 

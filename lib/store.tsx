@@ -66,7 +66,12 @@ const parseResult = (json: string): CompResult | undefined => {
   try {
     const r = JSON.parse(json);
     if (r?.version !== 2) return undefined;
-    return { winner: r.winner, scores: r.scores, feedback: { a: r.feedback?.a ?? "", b: r.feedback?.b ?? "" } };
+    return {
+      winner: r.winner,
+      conceded: r.conceded === "a" || r.conceded === "b" ? r.conceded : undefined,
+      scores: r.scores,
+      feedback: { a: r.feedback?.a ?? "", b: r.feedback?.b ?? "" },
+    };
   } catch {
     return undefined;
   }
@@ -124,6 +129,7 @@ function useBuildStore() {
   const createTopic = useReducer(reducers.createTopic);
   const setName = useReducer(reducers.setName);
   const completeProfile = useReducer(reducers.completeProfile);
+  const yieldDebate = useReducer(reducers.yieldDebate);
   const trackEvent = useReducer(reducers.trackEvent);
   const trackImpressions = useReducer(reducers.trackImpressions);
   const setInterests = useReducer(reducers.setInterests);
@@ -420,6 +426,8 @@ function useBuildStore() {
       createTopic: (args: { title: string; sideA: string; sideB: string; category: string }) => createTopic(args),
       setName: (name: string) => setName({ name }),
       completeProfile: (username: string, displayName: string) => completeProfile({ username, displayName }),
+      /** Concede a comp debate: it ends now and the opponent wins. */
+      yieldDebate: (chatId: string) => yieldDebate({ chatId: BigInt(chatId) }),
       /** Opening a topic or conversation ("open"), or reading one for 20 s+ ("read"). Callers check `canTrack` first. */
       trackEvent: (topicId: string, kind: "open" | "read") => trackEvent({ topicId: BigInt(topicId), kind }).catch(() => {}),
       setInterests: (interests: string[]) => setInterests({ interests }),
@@ -428,7 +436,7 @@ function useBuildStore() {
       trackConvoEvent: (chatId: string, kind: "open" | "read") => trackConvoEvent({ chatId: BigInt(chatId), kind }).catch(() => {}),
       reportConvoImpression,
     }),
-    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName, completeProfile, trackEvent, setInterests, reportImpression, trackConvoEvent, reportConvoImpression]
+    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName, completeProfile, yieldDebate, trackEvent, setInterests, reportImpression, trackConvoEvent, reportConvoImpression]
   );
 
   return {
@@ -439,6 +447,8 @@ function useBuildStore() {
     ...derived,
     /** Topics in personalised order (see lib/recommend.ts). */
     feed,
+    /** Wall clock (ms), ticking every 15 s; 0 until the first tick. Safe to read during render. */
+    now,
     /** Signed in with a finished profile, so activity can feed the recommender. */
     canTrack,
     /** The profile and topic features have loaded and the clock has ticked: safe to snapshot `feed`. */

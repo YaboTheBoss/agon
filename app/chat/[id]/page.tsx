@@ -35,6 +35,8 @@ export default function ChatPage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [breakdownSide, setBreakdownSide] = useState<Side | null>(null);
+  const [confirmYield, setConfirmYield] = useState(false);
+  const [yielding, setYielding] = useState(false);
   const endRef = useRef<HTMLLIElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollChat = useRef<string | null>(null);
@@ -223,6 +225,17 @@ export default function ChatPage() {
                   {error}
                 </p>
               )}
+              {comp && (
+                <div className="mb-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmYield(true)}
+                    className="flex min-h-[32px] items-center gap-1 rounded-full border-2 border-[#1E1B2E] bg-white px-3 text-xs font-extrabold text-[#A3103F]"
+                  >
+                    <Icon name="x" className="h-3.5 w-3.5" strokeWidth={3} /> Yield
+                  </button>
+                </div>
+              )}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -263,6 +276,55 @@ export default function ChatPage() {
           )}
         </div>
       </footer>
+
+      {confirmYield && !ended && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#1E1B2E]/40 p-3 sm:items-center" onClick={() => !yielding && setConfirmYield(false)}>
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="yield-title"
+            aria-describedby="yield-desc"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-[22px] border-2 border-[#1E1B2E] bg-white p-6 text-center shadow-[4px_4px_0_#1E1B2E] motion-safe:animate-[rise_.25s_ease-out]"
+          >
+            <h2 id="yield-title" className={`${displayFont} text-2xl`}>
+              Yield this debate?
+            </h2>
+            <p id="yield-desc" className="mt-2 text-sm text-[#3A3650]">
+              The debate ends now and <strong>{chat.opponent} wins</strong>, whatever the points. You&apos;ll both still get AI feedback.
+            </p>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                autoFocus
+                disabled={yielding}
+                onClick={() => setConfirmYield(false)}
+                className={`min-h-[44px] rounded-full border-2 border-[#1E1B2E] bg-[#FFD43B] text-sm font-black shadow-[3px_3px_0_#1E1B2E] ${press}`}
+              >
+                Keep debating
+              </button>
+              <button
+                type="button"
+                disabled={yielding}
+                onClick={() => {
+                  setYielding(true);
+                  setError(null);
+                  actions
+                    .yieldDebate(chat.id)
+                    .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn't yield"))
+                    .finally(() => {
+                      setYielding(false);
+                      setConfirmYield(false);
+                    });
+                }}
+                className={`min-h-[44px] rounded-full border-2 border-[#1E1B2E] bg-white text-sm font-extrabold text-[#A3103F] shadow-[3px_3px_0_#1E1B2E] disabled:opacity-60 ${press}`}
+              >
+                {yielding ? "Yielding…" : "Yield"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {breakdownSide && chat.awards && (
         <PointsBreakdown

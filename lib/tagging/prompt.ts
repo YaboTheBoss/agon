@@ -173,7 +173,7 @@ export function scoringJsonSchema(ids: string[]) {
   };
 }
 
-export type ConvoForFeedback = ConvoForSummary & { scores: { a: number; b: number }; winner: "a" | "b" | "tie" };
+export type ConvoForFeedback = ConvoForSummary & { scores: { a: number; b: number }; winner: "a" | "b" | "tie"; conceded?: "a" | "b" };
 
 export const FEEDBACK_SYSTEM_INSTRUCTION = [
   "You write the end-of-debate feedback for a finished competitive chat on Yaapi.",
@@ -185,7 +185,12 @@ export const FEEDBACK_SYSTEM_INSTRUCTION = [
 ].join("\n");
 
 export function buildFeedbackPrompt(c: ConvoForFeedback) {
-  const result = c.winner === "tie" ? `It ended in a tie, ${c.scores.a}–${c.scores.b}.` : `${c.winner === "a" ? c.sideA.name : c.sideB.name} won on points, ${Math.max(c.scores.a, c.scores.b)}–${Math.min(c.scores.a, c.scores.b)}.`;
+  const name = (s: "a" | "b") => (s === "a" ? c.sideA.name : c.sideB.name);
+  const result = c.conceded
+    ? `${name(c.conceded)} yielded (conceded) before time was up, so ${name(c.conceded === "a" ? "b" : "a")} wins. Points at that moment: ${c.sideA.name} ${c.scores.a}, ${c.sideB.name} ${c.scores.b}.`
+    : c.winner === "tie"
+      ? `It ended in a tie, ${c.scores.a}–${c.scores.b}.`
+      : `${name(c.winner)} won on points, ${Math.max(c.scores.a, c.scores.b)}–${Math.min(c.scores.a, c.scores.b)}.`;
   return [buildSummaryPrompt(c), "", `Result: ${result}`, `Side A is ${c.sideA.name}; Side B is ${c.sideB.name}.`].join("\n");
 }
 

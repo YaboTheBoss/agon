@@ -62,7 +62,13 @@ export type MyMsg = { id: string; from: "me" | "them"; text: string };
 /** One comp point award: which side, how many points, why, and the message that earned it. */
 export type PointAward = { id: string; side: Side; points: number; reason: string; messageId: string; quote: string };
 /** Final comp result: decided by points; feedback written by the AI once the chat ends. */
-export type CompResult = { winner: Side | "tie"; scores: { a: number; b: number }; feedback: { a: string; b: string } };
+export type CompResult = {
+  winner: Side | "tie";
+  /** Set when a player yielded (conceded): they lose whatever the points. */
+  conceded?: Side;
+  scores: { a: number; b: number };
+  feedback: { a: string; b: string };
+};
 export type MyChat = {
   id: string;
   topic: Pick<Topic, "id" | "title" | "sideA" | "sideB">;
