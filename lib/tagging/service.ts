@@ -243,8 +243,10 @@ async function scoreWith(conn: DbConnection, gen: { awards: GenerateAwards; feed
       const convo = convoForSummary(conn, c.id);
       if (!convo) continue;
       const scores = { a: fresh.scoreA, b: fresh.scoreB };
-      const winner = scores.a > scores.b ? "a" : scores.b > scores.a ? "b" : "tie";
-      const f = await gen.feedback({ ...convo, scores, winner });
+      // Mirrors finalizeResult in points.ts: a yield concedes, otherwise points decide.
+      const conceded = fresh.yieldedSide === "a" || fresh.yieldedSide === "b" ? fresh.yieldedSide : undefined;
+      const winner = conceded ? (conceded === "a" ? "b" : "a") : scores.a > scores.b ? "a" : scores.b > scores.a ? "b" : "tie";
+      const f = await gen.feedback({ ...convo, scores, winner, conceded });
       await conn.reducers.setChatResult({ chatId: c.id, summary: f.summary, feedbackA: f.feedbackA, feedbackB: f.feedbackB });
       run.results.push({ chatId: c.id.toString(), winner });
     } catch (error) {

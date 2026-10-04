@@ -21,6 +21,27 @@ import { requestAiUpkeep, requestTopicTagging } from "@/lib/tagging/client";
 
 type Tab = "start" | "convos";
 
+/**
+ * The feed keeps its order across navigation so cards don't jump around, but
+ * takes a fresh ranking once the remembered order is 10 minutes old, so it keeps
+ * learning from what you do. Tapping the Feed tab again also re-ranks
+ * (BottomNav clears these keys).
+ */
+const RERANK_AFTER_MS = 10 * 60_000;
+type OrderSnapshot = { ids: string[]; at: number };
+type FeedOrderKey = "feed:topic-order" | "feed:convo-order";
+
+function useFeedOrder(key: FeedOrderKey, ranked: string[]): string[] {
+  const { now } = useStore();
+  const [snap, setSnap] = usePageState<OrderSnapshot | null>(key, null);
+  // Also treats the old format (a bare id array) as stale.
+  const stale = !snap || !Array.isArray(snap.ids) || typeof snap.at !== "number" || now - snap.at > RERANK_AFTER_MS;
+  useEffect(() => {
+    if (stale && now > 0) setSnap({ ids: ranked, at: now });
+  }, [stale, ranked, now, setSnap]);
+  return stale ? ranked : snap.ids;
+}
+
 
 /**
  * The personalised feed, in the order it had when the feed opened: impressions
@@ -29,7 +50,7 @@ type Tab = "start" | "convos";
  */
 function RankedTopics({ onPick }: { onPick: (t: Topic, choice: Choice) => void }) {
   const { feed } = useStore();
-  const [order] = usePageState("feed:topic-order", () => feed.map((t) => t.id));
+  const order = useFeedOrder("feed:topic-order", feed.map((t) => t.id));
   const byId = new Map(feed.map((t) => [t.id, t]));
   const known = new Set(order);
   const justPosted = feed.filter((t) => t.mine && !known.has(t.id));
@@ -53,7 +74,7 @@ const SEEN_AFTER_MS = 1_000;
 function RankedConvos() {
   const { convoFeed } = useStore();
   const { token } = useAuth();
-  const [order] = usePageState("feed:convo-order", () => convoFeed.map((c) => c.id));
+  const order = useFeedOrder("feed:convo-order", convoFeed.map((c) => c.id));
   const byId = new Map(convoFeed.map((c) => [c.id, c]));
   const known = new Set(order);
   const list = [...order.flatMap((id) => byId.get(id) ?? []), ...convoFeed.filter((c) => !known.has(c.id))];

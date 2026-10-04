@@ -18,7 +18,12 @@ function TabLink({ tab, active, children }: { tab: typeof TABS[number]; active: 
         const memory = pageMemory();
         memory.set(`tab:${tab.href}`, tab.href);
         memory.set(`scroll:${tab.href}`, { y: 0, containers: {} });
-        if (tab.href === "/") memory.set("feed:tab", "start");
+        if (tab.href === "/") {
+          memory.set("feed:tab", "start");
+          // Tapping Feed again re-ranks it (see useFeedOrder in app/page.tsx).
+          memory.set("feed:topic-order", null);
+          memory.set("feed:convo-order", null);
+        }
         if (tab.href === "/me") memory.set("me:filter", "all");
         if (tab.href === "/leaderboard") memory.set("leaderboard:sort", "likes");
         window.dispatchEvent(new Event("yaapi:reset-scroll"));

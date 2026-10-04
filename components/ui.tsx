@@ -348,16 +348,23 @@ export function PointsBreakdown({
 /** Final comp result: winner by points, then the AI's feedback for each side. */
 export function CompResultCard({ result, names, you }: { result: CompResult; names: Record<Side, string>; you?: Side }) {
   const label = (s: Side) => (s === you ? "You" : names[s]);
-  const headline =
-    result.winner === "tie"
+  const wins = (s: Side) => `${label(s)} ${s === you ? "win" : "wins"}`;
+  const headline = result.conceded
+    ? `${label(result.conceded)} yielded · ${wins(result.winner as Side)}`
+    : result.winner === "tie"
       ? `Tie, ${result.scores.a}–${result.scores.b}`
-      : `${label(result.winner)} ${result.winner === you ? "win" : "wins"} on points, ${Math.max(result.scores.a, result.scores.b)}–${Math.min(result.scores.a, result.scores.b)}`;
+      : `${wins(result.winner)} on points, ${Math.max(result.scores.a, result.scores.b)}–${Math.min(result.scores.a, result.scores.b)}`;
   const order: Side[] = you === "b" ? ["b", "a"] : ["a", "b"];
   return (
     <section className={`${card} space-y-3 p-4`} aria-label="Result">
       <p className={`${displayFont} flex items-center gap-2 text-xl`}>
         <Icon name="trophy" className="h-6 w-6" /> {headline}
       </p>
+      {result.conceded && (
+        <p className="-mt-2 text-xs font-bold text-[#5E5A72]">
+          Points when it ended: {label("a")} {result.scores.a} · {label("b")} {result.scores.b}
+        </p>
+      )}
       {order.map((s) =>
         result.feedback[s] ? (
           <div key={s} className="rounded-2xl border-2 border-dashed border-[#1E1B2E] px-3 py-2.5" style={{ background: SIDE_TINT[s] }}>

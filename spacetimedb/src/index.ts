@@ -40,7 +40,7 @@ import {
   topicMeta,
   topicTag,
 } from './recommend';
-import { CASUAL_SWEEP_EVERY_MICROS, casualClock, casualExpired, casualSweepJob, startCasualClock, sweepCasualChats } from './casual';
+import { CASUAL_SWEEP_EVERY_MICROS, casualClock, casualExpired, casualSweepJob, startCasualClock, stopCasualClock, sweepCasualChats } from './casual';
 import { AwardInput, applyAwards, finalizeResult, pointAward, scoreState, startScoring } from './points';
 
 /* ---------------- tables ---------------- */
@@ -605,6 +605,24 @@ export const sendMessage = spacetimedb.reducer({ chatId: t.u64(), text: t.string
   postMessage(ctx, chatId, ctx.sender, body);
   noteMessage(ctx, c);
   startCasualClock(ctx, chatId); // both modes: live for 2 days from the first message
+});
+
+/**
+ * Yield (concede) a comp debate: it ends now and the other player wins,
+ * whatever the points. Leftover messages are still scored and both players
+ * get AI feedback, through the usual end-of-debate path.
+ */
+export const yieldDebate = spacetimedb.reducer({ chatId: t.u64() }, (ctx, { chatId }) => {
+  requireProfile(ctx);
+  const c = ctx.db.chat.id.find(chatId);
+  if (!c) throw new SenderError('Unknown chat');
+  if (c.mode !== 'comp') throw new SenderError('Only comp debates can be yielded');
+  const side = c.a.isEqual(ctx.sender) ? 'a' : c.b.isEqual(ctx.sender) ? 'b' : '';
+  if (!side) throw new SenderError('You are not in this chat');
+  if (c.status === 'ended' || casualExpired(ctx, chatId)) throw new SenderError('This debate has already ended');
+  if (!ctx.db.scoreState.chatId.find(chatId)) throw new SenderError('This debate can no longer be yielded');
+  ctx.db.chat.id.update({ ...c, status: 'ended', yieldedSide: side, lastAt: ctx.timestamp });
+  stopCasualClock(ctx, chatId);
 });
 
 /**

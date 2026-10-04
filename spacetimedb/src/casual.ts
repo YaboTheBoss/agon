@@ -43,6 +43,11 @@ export function startCasualClock(ctx: Ctx, chatId: bigint) {
   if (!ctx.db.casualClock.chatId.find(chatId)) ctx.db.casualClock.insert({ chatId, firstMessageAt: ctx.timestamp });
 }
 
+/** A chat ended early (comp yield): its clock is no longer needed. */
+export function stopCasualClock(ctx: Ctx, chatId: bigint) {
+  ctx.db.casualClock.chatId.delete(chatId);
+}
+
 /** True once a chat is 2 days past its first message. */
 export function casualExpired(ctx: Ctx, chatId: bigint) {
   const clock = ctx.db.casualClock.chatId.find(chatId);

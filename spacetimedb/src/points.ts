@@ -6,7 +6,8 @@
  * only constructive messages earn points, each with a short reason. When the
  * chat ends, leftover messages get a final pass, the side with more points wins
  * (decided here, not by the AI), and set_chat_result stores the AI's holistic
- * feedback.
+ * feedback. A player can also yield (concede): the debate ends at once and the
+ * other player wins, whatever the points.
  *
  * The AI's judgement is one layer; the hard limits are enforced here, so even a
  * fooled model can't hand out unbounded points:
@@ -135,10 +136,13 @@ export function finalizeResult(ctx: Ctx, chatId: bigint, summary: string, feedba
   if (state.finalized) throw new SenderError('Result already recorded');
   if (state.scoredCount !== orderedMessages(ctx, chatId).length) throw new SenderError('Score the remaining messages first');
   const clean = (s: string, max: number) => s.trim().replace(/[ \t]+/g, ' ').slice(0, max);
-  const winner = c.scoreA > c.scoreB ? 'a' : c.scoreB > c.scoreA ? 'b' : 'tie';
+  // A yield concedes: the other side wins regardless of points.
+  const conceded = c.yieldedSide === 'a' || c.yieldedSide === 'b' ? c.yieldedSide : undefined;
+  const winner = conceded ? (conceded === 'a' ? 'b' : 'a') : c.scoreA > c.scoreB ? 'a' : c.scoreB > c.scoreA ? 'b' : 'tie';
   const resultJson = JSON.stringify({
     version: 2,
     winner,
+    conceded,
     scores: { a: c.scoreA, b: c.scoreB },
     feedback: { a: clean(feedbackA, MAX_FEEDBACK), b: clean(feedbackB, MAX_FEEDBACK) },
   });

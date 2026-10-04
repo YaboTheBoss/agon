@@ -55,6 +55,7 @@ import TrackConvoEventReducer from "./track_convo_event_reducer";
 import TrackConvoImpressionsReducer from "./track_convo_impressions_reducer";
 import TrackEventReducer from "./track_event_reducer";
 import TrackImpressionsReducer from "./track_impressions_reducer";
+import YieldDebateReducer from "./yield_debate_reducer";
 
 // Import all procedure arg schemas
 
@@ -405,6 +406,7 @@ const reducersSchema = __reducers(
   __reducerSchema("track_convo_impressions", TrackConvoImpressionsReducer),
   __reducerSchema("track_event", TrackEventReducer),
   __reducerSchema("track_impressions", TrackImpressionsReducer),
+  __reducerSchema("yield_debate", YieldDebateReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

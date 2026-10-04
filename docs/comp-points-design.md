@@ -7,6 +7,7 @@ Comp debates are free-flowing chats scored by an AI referee in batches; the play
 - A comp chat is live for **2 days from its first message**, like casual chats. Players message freely: no turn order, no timers.
 - A sweep every minute ends expired chats; the server also refuses messages to an expired chat (`spacetimedb/src/casual.ts`).
 - When it ends, any unscored messages get a final pass, the **side with more points wins** (or it's a tie), and the AI writes holistic feedback for both players plus the conversation summary.
+- **Yield (concede):** either player can yield a live comp debate (`yield_debate`, in-page confirmation). It ends at once and **the other player wins, whatever the points**; leftover messages are still scored, the points are kept for the record, and the AI feedback is told it was a concession (`resultJson.conceded`). Concede-only on purpose: if yielding let points decide, the leader could yield to lock in a win.
 
 ## Scoring
 
