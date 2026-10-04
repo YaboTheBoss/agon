@@ -15,6 +15,15 @@ export const Admin = __t.object("Admin", {
 });
 export type Admin = __Infer<typeof Admin>;
 
+export const Affinity = __t.object("Affinity", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  feature: __t.string(),
+  score: __t.f64(),
+  updatedAt: __t.timestamp(),
+});
+export type Affinity = __Infer<typeof Affinity>;
+
 export const Category = __t.object("Category", {
   slug: __t.string(),
   name: __t.string(),
@@ -63,6 +72,28 @@ export const ChatLike = __t.object("ChatLike", {
 });
 export type ChatLike = __Infer<typeof ChatLike>;
 
+export const Entity = __t.object("Entity", {
+  id: __t.u64(),
+  key: __t.string(),
+  name: __t.string(),
+});
+export type Entity = __Infer<typeof Entity>;
+
+export const EntityInput = __t.object("EntityInput", {
+  name: __t.string(),
+  weight: __t.f32(),
+});
+export type EntityInput = __Infer<typeof EntityInput>;
+
+export const Interaction = __t.object("Interaction", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  topicId: __t.u64(),
+  kind: __t.string(),
+  at: __t.timestamp(),
+});
+export type Interaction = __Infer<typeof Interaction>;
+
 export const Message = __t.object("Message", {
   id: __t.u64(),
   chatId: __t.u64(),
@@ -99,6 +130,18 @@ export const Player = __t.object("Player", {
 });
 export type Player = __Infer<typeof Player>;
 
+export const PruneJob = __t.object("PruneJob", {
+  scheduledId: __t.u64(),
+  scheduledAt: __t.scheduleAt(),
+});
+export type PruneJob = __Infer<typeof PruneJob>;
+
+export const Service = __t.object("Service", {
+  identity: __t.identity(),
+  label: __t.string(),
+});
+export type Service = __Infer<typeof Service>;
+
 export const Submission = __t.object("Submission", {
   id: __t.u64(),
   chatId: __t.u64(),
@@ -107,6 +150,13 @@ export const Submission = __t.object("Submission", {
   text: __t.string(),
 });
 export type Submission = __Infer<typeof Submission>;
+
+export const Tag = __t.object("Tag", {
+  slug: __t.string(),
+  name: __t.string(),
+  sort: __t.u32(),
+});
+export type Tag = __Infer<typeof Tag>;
 
 export const Ticket = __t.object("Ticket", {
   id: __t.u64(),
@@ -132,6 +182,41 @@ export const Topic = __t.object("Topic", {
   createdAt: __t.timestamp(),
 });
 export type Topic = __Infer<typeof Topic>;
+
+export const TopicEntity = __t.object("TopicEntity", {
+  id: __t.u64(),
+  topicId: __t.u64(),
+  entityId: __t.u64(),
+  weight: __t.f32(),
+});
+export type TopicEntity = __Infer<typeof TopicEntity>;
+
+export const TopicMemory = __t.object("TopicMemory", {
+  id: __t.u64(),
+  owner: __t.identity(),
+  topicId: __t.u64(),
+  shown: __t.u32(),
+  lastShownAt: __t.timestamp(),
+  lastOpenAt: __t.timestamp(),
+  engaged: __t.bool(),
+  hiddenUntil: __t.timestamp(),
+});
+export type TopicMemory = __Infer<typeof TopicMemory>;
+
+export const TopicMeta = __t.object("TopicMeta", {
+  topicId: __t.u64(),
+  tone: __t.string(),
+  source: __t.string(),
+  taggedAt: __t.timestamp(),
+});
+export type TopicMeta = __Infer<typeof TopicMeta>;
+
+export const TopicTag = __t.object("TopicTag", {
+  id: __t.u64(),
+  topicId: __t.u64(),
+  tag: __t.string(),
+});
+export type TopicTag = __Infer<typeof TopicTag>;
 
 export const Username = __t.object("Username", {
   name: __t.string(),

@@ -9,7 +9,7 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-import type { Convo, Mode } from "@/lib/data";
+import type { Choice, Convo, Mode, Topic } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { AISummary, Avatar, Icon, Loading, Logo, ModeTag, PairingOverlay, SignInDialog, StatusChip, card, displayFont, press, usePairing } from "@/components/ui";
@@ -34,6 +34,27 @@ function ModeSwitch({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void 
         </button>
       ))}
     </div>
+  );
+}
+
+/**
+ * The personalised feed, in the order it had when the feed opened: impressions
+ * and picks keep updating your profile, but cards don't jump while you scroll.
+ * Your own new topics still appear at the top straight away.
+ */
+function RankedTopics({ onPick }: { onPick: (t: Topic, choice: Choice) => void }) {
+  const { feed } = useStore();
+  const [order] = useState(() => feed.map((t) => t.id));
+  const byId = new Map(feed.map((t) => [t.id, t]));
+  const known = new Set(order);
+  const justPosted = feed.filter((t) => t.mine && !known.has(t.id));
+  const list = [...justPosted, ...order.flatMap((id) => byId.get(id) ?? [])];
+  return (
+    <>
+      {list.map((t) => (
+        <TopicCard key={t.id} topic={t} onPick={onPick} trackImpression />
+      ))}
+    </>
   );
 }
 
@@ -162,7 +183,7 @@ export default function FeedPage() {
   const [mode, setMode] = useState<Mode>("casual");
   const [creating, setCreating] = useState(false);
   const { pairing, startPairing, cancelPairing } = usePairing();
-  const { ready, topics, convos: allConvos } = useStore();
+  const { ready, feedReady, convos: allConvos } = useStore();
   const { status } = useAuth();
   const signedIn = status === "signed-in";
   const [signingIn, setSigningIn] = useState<string | null>(null);
@@ -219,9 +240,11 @@ export default function FeedPage() {
                 Pick a side and we&apos;ll pair you with someone from the other one.
               </p>
               <ul className="space-y-4">
-                {topics.map((t) => (
-                  <TopicCard key={t.id} topic={t} onPick={(topic, choice) => startPairing({ topic, choice, mode })} />
-                ))}
+                {feedReady ? (
+                  <RankedTopics onPick={(topic, choice) => startPairing({ topic, choice, mode })} />
+                ) : (
+                  <Loading />
+                )}
               </ul>
             </>
           ) : (

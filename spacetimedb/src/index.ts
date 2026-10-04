@@ -12,9 +12,30 @@
  */
 
 import { schema, table, t, SenderError, type InferSchema, type ReducerCtx } from 'spacetimedb/server';
-import { Identity } from 'spacetimedb';
+import { Identity, ScheduleAt } from 'spacetimedb';
 import { removeDemoData as removeDemo, seed } from './seed';
 import { classifyLogin } from './auth';
+import {
+  EntityInput,
+  PRUNE_EVERY_MICROS,
+  TAG_SLUGS,
+  affinity,
+  applyTopicFeatures,
+  backfillFeatures,
+  entity,
+  interaction,
+  pruneInteractions,
+  pruneJob,
+  recordEvent,
+  seedInterests,
+  service,
+  tag,
+  tagTopic,
+  topicEntity,
+  topicMemory,
+  topicMeta,
+  topicTag,
+} from './recommend';
 
 /* ---------------- tables ---------------- */
 
@@ -195,10 +216,17 @@ const notification = table(
   }
 );
 
-const spacetimedb = schema({ player, admin, username, category, topic, vote, ticket, chat, message, submission, chatLike, notification });
+const spacetimedb = schema({
+  player, admin, username, category, topic, vote, ticket, chat, message, submission, chatLike, notification,
+  // feed recommendations (recommend.ts)
+  tag, topicTag, topicMeta, entity, topicEntity, interaction, affinity, topicMemory, service, pruneJob,
+});
 export default spacetimedb;
 
 export const ownNotifications = spacetimedb.clientVisibilityFilter.sql('SELECT * FROM notification WHERE recipient = :sender');
+// Taste profiles are private: each player receives only their own rows.
+export const ownAffinity = spacetimedb.clientVisibilityFilter.sql('SELECT * FROM affinity WHERE owner = :sender');
+export const ownTopicMemory = spacetimedb.clientVisibilityFilter.sql('SELECT * FROM topic_memory WHERE owner = :sender');
 
 export type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
 
@@ -390,10 +418,31 @@ function postMessage(ctx: Ctx, chatId: bigint, sender: Identity, text: string) {
 
 /* ---------------- lifecycle ---------------- */
 
+/** Count this message toward the taste profile (first 4 of a chat only). */
+function noteMessage(ctx: Ctx, c: ChatRow) {
+  const side = c.a.isEqual(ctx.sender) ? 'a' : 'b';
+  const sent =
+    [...ctx.db.message.chatId.filter(c.id)].filter(m => m.sender.isEqual(ctx.sender)).length +
+    [...ctx.db.submission.iter()].filter(s => s.chatId === c.id && s.side === side).length;
+  if (sent <= 4) recordEvent(ctx, ctx.sender, c.topicId, 'message', { mode: c.mode });
+}
+
+/** Make sure the daily interaction-pruning job exists (init only runs on a fresh database). */
+function ensurePruneJob(ctx: Ctx) {
+  if ([...ctx.db.pruneJob.iter()].length > 0) return;
+  ctx.db.pruneJob.insert({ scheduledId: 0n, scheduledAt: ScheduleAt.interval(PRUNE_EVERY_MICROS) });
+}
+
+function requireAdmin(ctx: Ctx) {
+  if (!ctx.db.admin.identity.find(ctx.sender)) throw new SenderError('Admins only');
+}
+
 export const init = spacetimedb.init(ctx => {
   // The publisher becomes the admin.
   ctx.db.admin.insert({ identity: ctx.sender });
   seed(ctx);
+  backfillFeatures(ctx);
+  ensurePruneJob(ctx);
 });
 
 /**
@@ -402,6 +451,7 @@ export const init = spacetimedb.init(ctx => {
  * A Google token minted for some other app is rejected outright.
  */
 export const onConnect = spacetimedb.clientConnected(ctx => {
+  ensurePruneJob(ctx);
   const login = classifyLogin(ctx.senderAuth.jwt);
   if (login.kind === 'other-google') throw new SenderError('This Google sign-in is not for this app');
   if (login.kind === 'anonymous') return;
@@ -467,7 +517,7 @@ export const createTopic = spacetimedb.reducer(
     if (!title || title.length > 120) throw new SenderError('The question must be 1–120 characters');
     if (sideA.length > 20 || sideB.length > 20) throw new SenderError('Side names must be 20 characters or less');
     if (!ctx.db.category.slug.find(args.category)) throw new SenderError('Unknown category');
-    ctx.db.topic.insert({
+    const row = ctx.db.topic.insert({
       id: 0n,
       title,
       category: args.category,
@@ -480,6 +530,9 @@ export const createTopic = spacetimedb.reducer(
       createdBy: ctx.sender,
       createdAt: ctx.timestamp,
     });
+    // Keyword tags now; the AI tagging service may replace them via setTopicFeatures.
+    tagTopic(ctx, row.id);
+    recordEvent(ctx, ctx.sender, row.id, 'create');
   }
 );
 
@@ -500,7 +553,10 @@ export const joinQueue = spacetimedb.reducer(
     if (choice !== 'a' && choice !== 'b' && choice !== 'either') throw new SenderError('Bad choice');
     if (mode !== 'casual' && mode !== 'comp') throw new SenderError('Bad mode');
 
+    // A first pick on a topic counts toward the taste profile; re-picks don't.
+    const firstPick = [...ctx.db.vote.by_topic_voter.filter([topicId, ctx.sender])].length === 0;
     castVote(ctx, topicId, choice);
+    if (firstPick) recordEvent(ctx, ctx.sender, topicId, 'pick', { mode });
 
     const waiting = [...ctx.db.ticket.topicId.filter(topicId)].filter(w => w.mode === mode);
     // Re-picking replaces your old ticket for this topic + mode.
@@ -575,6 +631,7 @@ export const sendMessage = spacetimedb.reducer({ chatId: t.u64(), text: t.string
         : (side === 'a' ? c.closingA : c.closingB);
       if (already) throw new SenderError(`Your ${c.phase} is already submitted`);
       ctx.db.submission.insert({ id: 0n, chatId, side, phase: c.phase, text: body });
+      noteMessage(ctx, c);
       const updated: ChatRow = {
         ...c,
         openingA: c.phase === 'opening' && side === 'a' ? true : c.openingA,
@@ -593,6 +650,7 @@ export const sendMessage = spacetimedb.reducer({ chatId: t.u64(), text: t.string
   }
 
   postMessage(ctx, chatId, ctx.sender, body);
+  noteMessage(ctx, c);
 });
 
 export const passTurn = spacetimedb.reducer({ chatId: t.u64() }, (ctx, { chatId }) => {
@@ -657,6 +715,7 @@ export const toggleLike = spacetimedb.reducer({ chatId: t.u64() }, (ctx, { chatI
     const p = ctx.db.player.identity.find(who);
     if (p) ctx.db.player.identity.update({ ...p, likes: Math.max(0, p.likes + delta) });
   }
+  recordEvent(ctx, ctx.sender, c.topicId, delta > 0 ? 'like' : 'unlike');
 });
 
 /* ---------------- admin ---------------- */
@@ -670,4 +729,70 @@ export const removeDemoData = spacetimedb.reducer(ctx => {
   if (!ctx.db.admin.identity.find(ctx.sender)) throw new SenderError('Admins only');
   if (!removeDemo(ctx)) throw new SenderError('Demo data was already removed');
   console.info('Demo data removed');
+});
+
+/* ---------------- feed recommendations ---------------- */
+
+/** Client-observed actions: opening a topic or conversation, and reading one for 20 s+. */
+export const trackEvent = spacetimedb.reducer({ topicId: t.u64(), kind: t.string() }, (ctx, { topicId, kind }) => {
+  requireProfile(ctx);
+  if (kind !== 'open' && kind !== 'read') throw new SenderError('Unknown event');
+  recordEvent(ctx, ctx.sender, topicId, kind);
+});
+
+/** Topics that were actually on screen, batched by the client. Repeats within a day are ignored. */
+export const trackImpressions = spacetimedb.reducer({ topicIds: t.array(t.u64()) }, (ctx, { topicIds }) => {
+  requireProfile(ctx);
+  if (topicIds.length > 50) throw new SenderError('Too many impressions at once');
+  for (const id of new Set(topicIds)) if (ctx.db.topic.id.find(id)) recordEvent(ctx, ctx.sender, id, 'impression');
+});
+
+/** Welcome-screen interests: tag slugs (or "cat:<slug>") to start the taste profile with. */
+export const setInterests = spacetimedb.reducer({ interests: t.array(t.string()) }, (ctx, { interests }) => {
+  requirePlayer(ctx);
+  seedInterests(ctx, ctx.sender, interests);
+});
+
+/**
+ * Replace a topic's tags, tone and entities. Only the trusted tagging service
+ * (an identity the admin registered with grantService) may call this.
+ */
+export const setTopicFeatures = spacetimedb.reducer(
+  { topicId: t.u64(), tags: t.array(t.string()), tone: t.string(), entities: t.array(EntityInput) },
+  (ctx, { topicId, tags, tone, entities }) => {
+    if (!ctx.db.service.identity.find(ctx.sender)) throw new SenderError('Only the tagging service may set topic features');
+    if (!ctx.db.topic.id.find(topicId)) throw new SenderError('Unknown topic');
+    const unknown = tags.filter(s => !TAG_SLUGS.has(s));
+    if (unknown.length) throw new SenderError(`Unknown tags: ${unknown.join(', ')}`);
+    if (tags.length < 1 || tags.length > 4) throw new SenderError('Give 1–4 tags');
+    if (tone !== 'serious' && tone !== 'fun') throw new SenderError('Tone must be serious or fun');
+    if (entities.length > 6) throw new SenderError('Give at most 6 entities');
+    for (const e of entities) {
+      if (!e.name.trim() || e.name.length > 60) throw new SenderError('Entity names must be 1–60 characters');
+      if (!(e.weight >= 0 && e.weight <= 1)) throw new SenderError('Entity weights must be 0–1');
+    }
+    applyTopicFeatures(ctx, topicId, { tags, tone, entities, source: 'ai' });
+  }
+);
+
+/** Admin: allow an identity (e.g. the AI tagging server) to call setTopicFeatures. */
+export const grantService = spacetimedb.reducer({ identity: t.identity(), label: t.string() }, (ctx, { identity, label }) => {
+  requireAdmin(ctx);
+  if (ctx.db.service.identity.find(identity)) ctx.db.service.identity.update({ identity, label });
+  else ctx.db.service.insert({ identity, label });
+});
+
+export const revokeService = spacetimedb.reducer({ identity: t.identity() }, (ctx, { identity }) => {
+  requireAdmin(ctx);
+  ctx.db.service.identity.delete(identity);
+});
+
+/** Admin: create the tag list and tag every untagged topic (run once after deploying this to an existing database). */
+export const backfillTopicFeatures = spacetimedb.reducer(ctx => {
+  requireAdmin(ctx);
+  console.info(`Tagged ${backfillFeatures(ctx)} topics`);
+});
+
+export const pruneTick = spacetimedb.reducer({ onSchedule: pruneJob }, { job: pruneJob.rowType }, ctx => {
+  pruneInteractions(ctx);
 });

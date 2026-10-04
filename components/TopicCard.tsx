@@ -7,18 +7,57 @@
  */
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import type { Choice, Topic } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { Icon, PollBar, card } from "@/components/ui";
 
-export function TopicCard({ topic, onPick }: { topic: Topic; onPick: (t: Topic, choice: Choice) => void }) {
-  const { categoryBySlug, convosForTopic, myVotes } = useStore();
+/** How long a card must be at least half on screen to count as seen. */
+const SEEN_AFTER_MS = 1_000;
+
+export function TopicCard({
+  topic,
+  onPick,
+  trackImpression = false,
+}: {
+  topic: Topic;
+  onPick: (t: Topic, choice: Choice) => void;
+  /** Report "this card was seen" for the recommender (the feed does; search doesn't). */
+  trackImpression?: boolean;
+}) {
+  const { categoryBySlug, convosForTopic, myVotes, actions } = useStore();
+  const ref = useRef<HTMLLIElement>(null);
+  const { reportImpression } = actions;
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!trackImpression || !el || typeof IntersectionObserver === "undefined") return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          timer = setTimeout(() => {
+            reportImpression(topic.id);
+            observer.disconnect();
+          }, SEEN_AFTER_MS);
+        } else if (timer) {
+          clearTimeout(timer);
+        }
+      },
+      { threshold: 0.5 }
+    );
+    observer.observe(el);
+    return () => {
+      if (timer) clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [trackImpression, topic.id, reportImpression]);
   const cat = categoryBySlug(topic.category);
   const chats = convosForTopic(topic.id).length;
   const picked = (myVotes.get(topic.id) as Choice | undefined) ?? null;
 
   return (
-    <li className={`${card} relative p-4 transition-colors hover:bg-[#FFFDF5]`}>
+    <li ref={ref} className={`${card} relative p-4 transition-colors hover:bg-[#FFFDF5]`}>
       <div className="mb-2 flex flex-wrap items-center gap-2">
         {cat && (
           <Link

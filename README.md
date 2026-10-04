@@ -52,6 +52,17 @@ The first publish seeds categories, topics, demo players and a few chats.
 - **Sign-in:** Google. The Google ID token is the SpacetimeDB login, so the same Google account is the same player on every device (`lib/auth.tsx` on the client, `spacetimedb/src/auth.ts` on the server). Signed-out visitors connect anonymously and can browse; every write reducer requires a Google sign-in for this app's client ID.
 - **Matchmaking:** `joinQueue` records your vote and pairs you with someone waiting on the other side of the same topic + mode (exact opposites first, then "Either" pickers, oldest first). If nobody's waiting you stay in the queue — even after closing the app — and get a "You got paired with another user!" notification when someone matches you. Not everyone gets paired: when one side is the big majority, some of them just wait.
 - **Comp mode:** two-minute hidden openings, alternating engagement with five-minute player clocks and 90-second response clocks, 90-second hidden closings, then a multi-judge Gemini panel. Complete responses are revealed only after submission; openings and closings reveal simultaneously.
+- **Feed recommendations:** every pick, open, read, like, message and on-screen impression updates a private per-player taste profile (scores per category, tag, tone, mode and named entity, halving every 14 days). Each browser ranks its own feed from that profile plus popularity, freshness, live chats and queue odds, with exploration and diversity rules. Server: `spacetimedb/src/recommend.ts`; ranking: `lib/recommend.ts`. Design: the "yaapi feed recommendations" doc.
+
+### Topic tagging
+
+Topics carry 1–4 tags from one app-wide list (`TAGS` in `spacetimedb/src/recommend.ts`), a tone and named entities. New topics are tagged by keyword rules when created. An AI tagger replaces those through the `set_topic_features` reducer, which only registered service identities may call:
+
+1. The tagging server connects to SpacetimeDB with its own token (keep it in a server-only env var) and reads its identity.
+2. The admin registers it once: `spacetime call <db> grant_service '{"__identity__":"0x<identity hex>"}' '"ai-tagger"' --server <server>`.
+3. On each new topic, it calls `set_topic_features(topicId, tags, tone, entities)`; unknown tags, bad tones or weights outside 0–1 are refused.
+
+After deploying this to an existing database (where `init` doesn't re-run), the admin runs `spacetime call <db> backfill_topic_features --server <server>` once to create the tag list and tag every existing topic.
 
 After changing the competitive schema, republish with `npm run db:reset` in local development and regenerate bindings with `npm run db:generate`. Production migrations require an intentional data-migration plan rather than deleting data.
 

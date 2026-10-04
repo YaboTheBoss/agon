@@ -6,15 +6,22 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect } from "react";
 import type { Choice } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { Avatar, Icon, Loading, ModeTag, PairingOverlay, PageHeader, PollBar, StatusChip, card, press, usePairing } from "@/components/ui";
 
 export default function TopicPage() {
   const { id } = useParams<{ id: string }>();
-  const { ready, topicById, categoryBySlug, convosForTopic, myVotes } = useStore();
+  const { ready, topicById, categoryBySlug, convosForTopic, myVotes, canTrack, actions } = useStore();
   const topic = topicById.get(id);
   const { pairing, startPairing, cancelPairing } = usePairing();
+
+  // Opening a topic tells the recommender you're curious about it.
+  const exists = !!topic;
+  useEffect(() => {
+    if (canTrack && exists) actions.trackEvent(id, "open");
+  }, [canTrack, exists, id, actions]);
 
   if (!ready) {
     return (

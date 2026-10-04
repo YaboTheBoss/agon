@@ -15,6 +15,8 @@ import { useAuth } from "@/lib/auth";
 import { Avatar, Icon, Loading, Logo, SignInCard, card, displayFont, press } from "@/components/ui";
 
 const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
+const MIN_INTERESTS = 3;
+const MAX_INTERESTS = 12;
 
 /** "Zhan Feng!" → "zhanfeng" */
 function suggestUsername(name: string) {
@@ -59,7 +61,8 @@ function Welcome() {
 }
 
 function SetupForm({ googleName }: { googleName: string }) {
-  const { actions, usernameTaken } = useStore();
+  const { actions, usernameTaken, tags } = useStore();
+  const [interests, setInterests] = useState<string[]>([]);
   const [displayName, setDisplayName] = useState(googleName);
   const [username, setUsername] = useState(() => suggestUsername(googleName));
   const [touched, setTouched] = useState(false);
@@ -70,7 +73,11 @@ function SetupForm({ googleName }: { googleName: string }) {
   const formatOk = USERNAME_RE.test(handle);
   const taken = formatOk && usernameTaken(handle);
   const nameOk = displayName.trim().length >= 2 && displayName.trim().length <= 24;
-  const canSubmit = formatOk && !taken && nameOk && !saving;
+  const interestsOk = interests.length >= MIN_INTERESTS;
+  const canSubmit = formatOk && !taken && nameOk && interestsOk && !saving;
+
+  const toggleInterest = (slug: string) =>
+    setInterests((cur) => (cur.includes(slug) ? cur.filter((s) => s !== slug) : cur.length < MAX_INTERESTS ? [...cur, slug] : cur));
 
   const usernameHint = !handle
     ? { tone: "muted", text: "3–20 letters, numbers or underscores." }
@@ -86,6 +93,8 @@ function SetupForm({ googleName }: { googleName: string }) {
     if (!canSubmit) return;
     setSaving(true);
     setError(null);
+    // Interests first: finishing the profile navigates away.
+    actions.setInterests(interests).catch(() => {});
     actions
       .completeProfile(handle, displayName)
       .catch((err: unknown) => {
@@ -157,6 +166,32 @@ function SetupForm({ googleName }: { googleName: string }) {
             {usernameHint.text} Usernames can&apos;t be changed later.
           </span>
         </label>
+
+        <fieldset>
+          <legend className="text-sm font-extrabold">What are you into?</legend>
+          <p className={`mb-2 text-xs font-semibold ${touched && !interestsOk ? "text-[#A3103F]" : "text-[#5E5A72]"}`}>
+            Pick at least {MIN_INTERESTS} so your feed starts with debates you&apos;ll like.{" "}
+            <span aria-live="polite">{interests.length} picked</span>
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {tags.map((t) => {
+              const on = interests.includes(t.slug);
+              return (
+                <button
+                  key={t.slug}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => toggleInterest(t.slug)}
+                  className={`min-h-[36px] rounded-full border-2 border-[#1E1B2E] px-3 text-sm font-bold transition-colors ${
+                    on ? "bg-[#1E1B2E] text-white" : "bg-white text-[#1E1B2E] hover:bg-[#F6F3FF]"
+                  }`}
+                >
+                  {t.name}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
 
         {error && (
           <p role="alert" className="text-sm font-bold text-[#A3103F]">

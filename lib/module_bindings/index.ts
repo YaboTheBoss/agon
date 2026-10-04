@@ -35,30 +35,44 @@ import {
 
 // Import all reducer arg schemas
 import AdvanceMatchReducer from "./advance_match_reducer";
+import BackfillTopicFeaturesReducer from "./backfill_topic_features_reducer";
 import CompleteProfileReducer from "./complete_profile_reducer";
 import CreateTopicReducer from "./create_topic_reducer";
 import DismissNotificationsReducer from "./dismiss_notifications_reducer";
+import GrantServiceReducer from "./grant_service_reducer";
 import JoinQueueReducer from "./join_queue_reducer";
 import LeaveQueueReducer from "./leave_queue_reducer";
 import PassTurnReducer from "./pass_turn_reducer";
 import RemoveDemoDataReducer from "./remove_demo_data_reducer";
+import RevokeServiceReducer from "./revoke_service_reducer";
 import SendMessageReducer from "./send_message_reducer";
+import SetInterestsReducer from "./set_interests_reducer";
 import SetNameReducer from "./set_name_reducer";
+import SetTopicFeaturesReducer from "./set_topic_features_reducer";
 import SubmitJudgingResultReducer from "./submit_judging_result_reducer";
 import ToggleLikeReducer from "./toggle_like_reducer";
+import TrackEventReducer from "./track_event_reducer";
+import TrackImpressionsReducer from "./track_impressions_reducer";
 import YieldEngagementReducer from "./yield_engagement_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import AffinityRow from "./affinity_table";
 import CategoryRow from "./category_table";
 import ChatRow from "./chat_table";
 import ChatLikeRow from "./chat_like_table";
+import EntityRow from "./entity_table";
 import MessageRow from "./message_table";
 import NotificationRow from "./notification_table";
 import PlayerRow from "./player_table";
+import TagRow from "./tag_table";
 import TicketRow from "./ticket_table";
 import TopicRow from "./topic_table";
+import TopicEntityRow from "./topic_entity_table";
+import TopicMemoryRow from "./topic_memory_table";
+import TopicMetaRow from "./topic_meta_table";
+import TopicTagRow from "./topic_tag_table";
 import UsernameRow from "./username_table";
 import VoteRow from "./vote_table";
 
@@ -66,6 +80,21 @@ import VoteRow from "./vote_table";
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  affinity: __table({
+    name: 'affinity',
+    indexes: [
+      { accessor: 'id', name: 'affinity_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'by_owner_feature', name: 'affinity_owner_feature_idx_btree', algorithm: 'btree', columns: [
+        'owner',
+        'feature',
+      ] },
+    ],
+    constraints: [
+      { name: 'affinity_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, AffinityRow),
   category: __table({
     name: 'category',
     indexes: [
@@ -112,6 +141,21 @@ const tablesSchema = __schema({
       { name: 'chat_like_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, ChatLikeRow),
+  entity: __table({
+    name: 'entity',
+    indexes: [
+      { accessor: 'id', name: 'entity_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'key', name: 'entity_key_idx_btree', algorithm: 'btree', columns: [
+        'key',
+      ] },
+    ],
+    constraints: [
+      { name: 'entity_id_key', constraint: 'unique', columns: ['id'] },
+      { name: 'entity_key_key', constraint: 'unique', columns: ['key'] },
+    ],
+  }, EntityRow),
   message: __table({
     name: 'message',
     indexes: [
@@ -151,6 +195,17 @@ const tablesSchema = __schema({
       { name: 'player_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
   }, PlayerRow),
+  tag: __table({
+    name: 'tag',
+    indexes: [
+      { accessor: 'slug', name: 'tag_slug_idx_btree', algorithm: 'btree', columns: [
+        'slug',
+      ] },
+    ],
+    constraints: [
+      { name: 'tag_slug_key', constraint: 'unique', columns: ['slug'] },
+    ],
+  }, TagRow),
   ticket: __table({
     name: 'ticket',
     indexes: [
@@ -182,6 +237,63 @@ const tablesSchema = __schema({
       { name: 'topic_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, TopicRow),
+  topicEntity: __table({
+    name: 'topic_entity',
+    indexes: [
+      { accessor: 'entityId', name: 'topic_entity_entity_id_idx_btree', algorithm: 'btree', columns: [
+        'entityId',
+      ] },
+      { accessor: 'id', name: 'topic_entity_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'topicId', name: 'topic_entity_topic_id_idx_btree', algorithm: 'btree', columns: [
+        'topicId',
+      ] },
+    ],
+    constraints: [
+      { name: 'topic_entity_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, TopicEntityRow),
+  topicMemory: __table({
+    name: 'topic_memory',
+    indexes: [
+      { accessor: 'id', name: 'topic_memory_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'by_owner_topic', name: 'topic_memory_owner_topic_id_idx_btree', algorithm: 'btree', columns: [
+        'owner',
+        'topicId',
+      ] },
+    ],
+    constraints: [
+      { name: 'topic_memory_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, TopicMemoryRow),
+  topicMeta: __table({
+    name: 'topic_meta',
+    indexes: [
+      { accessor: 'topicId', name: 'topic_meta_topic_id_idx_btree', algorithm: 'btree', columns: [
+        'topicId',
+      ] },
+    ],
+    constraints: [
+      { name: 'topic_meta_topic_id_key', constraint: 'unique', columns: ['topicId'] },
+    ],
+  }, TopicMetaRow),
+  topicTag: __table({
+    name: 'topic_tag',
+    indexes: [
+      { accessor: 'id', name: 'topic_tag_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+      { accessor: 'topicId', name: 'topic_tag_topic_id_idx_btree', algorithm: 'btree', columns: [
+        'topicId',
+      ] },
+    ],
+    constraints: [
+      { name: 'topic_tag_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, TopicTagRow),
   username: __table({
     name: 'username',
     indexes: [
@@ -217,17 +329,24 @@ const tablesSchema = __schema({
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("advance_match", AdvanceMatchReducer),
+  __reducerSchema("backfill_topic_features", BackfillTopicFeaturesReducer),
   __reducerSchema("complete_profile", CompleteProfileReducer),
   __reducerSchema("create_topic", CreateTopicReducer),
   __reducerSchema("dismiss_notifications", DismissNotificationsReducer),
+  __reducerSchema("grant_service", GrantServiceReducer),
   __reducerSchema("join_queue", JoinQueueReducer),
   __reducerSchema("leave_queue", LeaveQueueReducer),
   __reducerSchema("pass_turn", PassTurnReducer),
   __reducerSchema("remove_demo_data", RemoveDemoDataReducer),
+  __reducerSchema("revoke_service", RevokeServiceReducer),
   __reducerSchema("send_message", SendMessageReducer),
+  __reducerSchema("set_interests", SetInterestsReducer),
   __reducerSchema("set_name", SetNameReducer),
+  __reducerSchema("set_topic_features", SetTopicFeaturesReducer),
   __reducerSchema("submit_judging_result", SubmitJudgingResultReducer),
   __reducerSchema("toggle_like", ToggleLikeReducer),
+  __reducerSchema("track_event", TrackEventReducer),
+  __reducerSchema("track_impressions", TrackImpressionsReducer),
   __reducerSchema("yield_engagement", YieldEngagementReducer),
 );
 

@@ -9,15 +9,19 @@
  * tables.x.where(...).
  */
 
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { SpacetimeDBProvider, useReducer, useSpacetimeDB, useTable } from "spacetimedb/react";
 import type { Identity } from "spacetimedb";
 import { DbConnection, reducers, tables } from "@/lib/module_bindings";
 import { tokenExpired, useAuth } from "@/lib/auth";
 import type { Category, Choice, Convo, IconName, Leader, Mode, MyChat, Side, Topic } from "@/lib/data";
+import { decayScore, rankFeed, type FeedEntity, type MemoryRow } from "@/lib/recommend";
 
 export type QueuedTicket = { id: string; topicId: string; title: string; choice: Choice; mode: Mode; since: number };
 export type PairNotification = { id: string; chatId: string; title: string; text: string; at: number };
+export type TagOption = { slug: string; name: string };
+
+const IMPRESSION_FLUSH_MS = 5_000;
 
 const URI = process.env.NEXT_PUBLIC_SPACETIMEDB_URI ?? "ws://localhost:3010";
 const DB_NAME = process.env.NEXT_PUBLIC_SPACETIMEDB_DB ?? "yaapi-dev";
@@ -97,6 +101,14 @@ function useBuildStore() {
   const [ticketRows] = useTable(tables.ticket);
   const [notificationRows] = useTable(tables.notification);
   const [usernameRows] = useTable(tables.username);
+  // Feed recommendations: topic features (public) + this player's own profile rows.
+  const [tagRows, tagsReady] = useTable(tables.tag);
+  const [topicTagRows, topicTagsReady] = useTable(tables.topicTag);
+  const [topicMetaRows] = useTable(tables.topicMeta);
+  const [entityRows] = useTable(tables.entity);
+  const [topicEntityRows, topicEntitiesReady] = useTable(tables.topicEntity);
+  const [affinityRows, affinityReady] = useTable(tables.affinity);
+  const [memoryRows, memoryReady] = useTable(tables.topicMemory);
 
   const ready = playersReady && categoriesReady && topicsReady && chatsReady && messagesReady;
 
@@ -112,6 +124,21 @@ function useBuildStore() {
   const passTurn = useReducer(reducers.passTurn);
   const yieldEngagement = useReducer(reducers.yieldEngagement);
   const submitJudgingResult = useReducer(reducers.submitJudgingResult);
+  const trackEvent = useReducer(reducers.trackEvent);
+  const trackImpressions = useReducer(reducers.trackImpressions);
+  const setInterests = useReducer(reducers.setInterests);
+
+  // Wall clock for decay and freshness, ticking once a minute (never read during render).
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const first = setTimeout(tick, 0);
+    const every = setInterval(tick, 60_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+    };
+  }, []);
 
   const derived = useMemo(() => {
     const playerByHex = new Map(playerRows.map((p) => [p.identity.toHexString(), p]));
@@ -136,7 +163,8 @@ function useBuildStore() {
     const mine = chatRows.filter((c) => same(c.a, identity) || same(c.b, identity));
     const myCategories = new Set(mine.map((c) => topicRows.find((t) => t.id === c.topicId)?.category));
 
-    // Feed ranking: your fresh topics first, then hot, then most played.
+    // Default order for lists (search, categories): your fresh topics first, then hot, then most played.
+    // The feed itself is personalised separately (`feed`, below).
     // "Fresh" is measured against the newest topic so ranking stays a pure function of the data.
     const DAY = 86_400_000;
     const now = Math.max(0, ...topicRows.map((t) => ms(t.createdAt)));
@@ -270,6 +298,86 @@ function useBuildStore() {
     return { me, categories, topics, topicById, convos, myChats, leaders, likedChatIds, myVotes, myTickets, notifications, nameOf };
   }, [identity, playerRows, categoryRows, topicRows, chatRows, messageRows, likeRows, voteRows, ticketRows, notificationRows]);
 
+  // Personalised feed order (lib/recommend.ts). Recomputed as data changes; the feed
+  // page snapshots it on open so cards don't jump around while you scroll.
+  const tags: TagOption[] = useMemo(() => [...tagRows].sort((x, y) => x.sort - y.sort).map((t) => ({ slug: t.slug, name: t.name })), [tagRows]);
+  const feed: Topic[] = useMemo(() => {
+    const at = now || Math.max(0, ...derived.topics.map((t) => t.createdAt));
+    const group = <T,>(rows: readonly T[], key: (r: T) => string) => {
+      const m = new Map<string, T[]>();
+      for (const r of rows) m.set(key(r), [...(m.get(key(r)) ?? []), r]);
+      return m;
+    };
+    const entityName = new Map(entityRows.map((e) => [e.id.toString(), e.name]));
+    const affinity = new Map<string, number>();
+    for (const a of affinityRows) if (same(a.owner, identity)) affinity.set(a.feature, decayScore(a.score, ms(a.updatedAt), at));
+    const memory = new Map<string, MemoryRow>();
+    for (const m of memoryRows) {
+      if (same(m.owner, identity)) memory.set(m.topicId.toString(), { shown: m.shown, engaged: m.engaged, hiddenUntil: ms(m.hiddenUntil) });
+    }
+    const chatsByTopic = new Map<string, { total: number; live24h: number }>();
+    for (const c of chatRows) {
+      const k = c.topicId.toString();
+      const cur = chatsByTopic.get(k) ?? { total: 0, live24h: 0 };
+      cur.total++;
+      if (c.status === "live" && at - ms(c.lastAt) < 86_400_000) cur.live24h++;
+      chatsByTopic.set(k, cur);
+    }
+    const waitingByTopic = new Map<string, number>();
+    for (const tk of ticketRows) {
+      if (same(tk.identity, identity)) continue;
+      const k = tk.topicId.toString();
+      waitingByTopic.set(k, (waitingByTopic.get(k) ?? 0) + 1);
+    }
+    return rankFeed({
+      topics: derived.topics,
+      tagsByTopic: new Map([...group(topicTagRows, (r) => r.topicId.toString())].map(([k, rs]) => [k, rs.map((r) => r.tag)])),
+      toneByTopic: new Map(topicMetaRows.map((m) => [m.topicId.toString(), m.tone])),
+      entitiesByTopic: new Map(
+        [...group(topicEntityRows, (r) => r.topicId.toString())].map(([k, rs]) => [
+          k,
+          rs.map((r): FeedEntity => ({ id: r.entityId.toString(), name: entityName.get(r.entityId.toString()) ?? "", weight: r.weight })),
+        ])
+      ),
+      affinity,
+      memory,
+      chatsByTopic,
+      waitingByTopic,
+      tagNames: new Map(tags.map((t) => [t.slug, t.name])),
+      categoryNames: new Map(derived.categories.map((c) => [c.slug, c.name])),
+      now: at,
+      seed: identity?.toHexString() ?? "anon",
+    });
+  }, [now, identity, derived.topics, derived.categories, tags, topicTagRows, topicMetaRows, entityRows, topicEntityRows, affinityRows, memoryRows, chatRows, ticketRows]);
+
+  // Impressions: cards report themselves once per visit; we send them in batches.
+  // Only players with a finished profile are tracked (the server refuses the rest).
+  const canTrack = !!derived.me?.username;
+  const canTrackRef = useRef(canTrack);
+  const pendingImpressions = useRef(new Set<string>());
+  const sentImpressions = useRef(new Set<string>());
+  useEffect(() => {
+    canTrackRef.current = canTrack;
+  }, [canTrack]);
+  useEffect(() => {
+    const flush = () => {
+      if (!canTrackRef.current || pendingImpressions.current.size === 0) return;
+      const ids = [...pendingImpressions.current].slice(0, 50);
+      ids.forEach((id) => pendingImpressions.current.delete(id));
+      trackImpressions({ topicIds: ids.map((id) => BigInt(id)) }).catch(() => {});
+    };
+    const every = setInterval(flush, IMPRESSION_FLUSH_MS);
+    return () => {
+      clearInterval(every);
+      flush();
+    };
+  }, [trackImpressions]);
+  const reportImpression = useCallback((topicId: string) => {
+    if (sentImpressions.current.has(topicId)) return;
+    sentImpressions.current.add(topicId);
+    pendingImpressions.current.add(topicId);
+  }, []);
+
   // Stable identity so effects can depend on it without re-running every update.
   const actions = useMemo(
     () => ({
@@ -285,8 +393,12 @@ function useBuildStore() {
       passTurn: (chatId: string) => passTurn({ chatId: BigInt(chatId) }),
       yieldEngagement: (chatId: string) => yieldEngagement({ chatId: BigInt(chatId) }),
       submitJudgingResult: (chatId: string, resultJson: string) => submitJudgingResult({ chatId: BigInt(chatId), resultJson }),
+      /** Opening a topic or conversation ("open"), or reading one for 20 s+ ("read"). Callers check `canTrack` first. */
+      trackEvent: (topicId: string, kind: "open" | "read") => trackEvent({ topicId: BigInt(topicId), kind }).catch(() => {}),
+      setInterests: (interests: string[]) => setInterests({ interests }),
+      reportImpression,
     }),
-    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName, completeProfile, advanceMatch, passTurn, yieldEngagement, submitJudgingResult]
+    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName, completeProfile, advanceMatch, passTurn, yieldEngagement, submitJudgingResult, trackEvent, setInterests, reportImpression]
   );
 
   return {
@@ -295,6 +407,14 @@ function useBuildStore() {
     connectionError,
     identity,
     ...derived,
+    /** Topics in personalised order (see lib/recommend.ts). */
+    feed,
+    /** Signed in with a finished profile, so activity can feed the recommender. */
+    canTrack,
+    /** The profile and topic features have loaded and the clock has ticked: safe to snapshot `feed`. */
+    feedReady: ready && now > 0 && tagsReady && topicTagsReady && topicEntitiesReady && affinityReady && memoryReady,
+    /** The app-wide tag list, for the interests picker. */
+    tags,
     /** Signed in with Google but hasn't picked a username yet. */
     needsProfile: !!derived.me && !derived.me.username,
     usernameTaken: (handle: string) => usernameRows.some((u) => u.name === handle.toLowerCase()),
