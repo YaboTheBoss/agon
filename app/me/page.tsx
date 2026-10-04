@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * My Chats ("My playground") — your likes, membership, and the chats you're in.
+ * My yaapi ("My playground") — your likes, membership, and the chats you're in.
  * Casual chats show whose turn it is; challenge (comp) chats show Live/Ended + score.
  */
 

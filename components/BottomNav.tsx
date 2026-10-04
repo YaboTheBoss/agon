@@ -7,9 +7,9 @@ import { useStore } from "@/lib/store";
 
 const TABS = [
   { href: "/", label: "Feed", icon: "house", color: "#FFD43B", match: (p: string) => p === "/" || p.startsWith("/topics") },
-  { href: "/categories", label: "Categories", icon: "grid", color: "#7EE0B5", match: (p: string) => p.startsWith("/categories") },
-  { href: "/me", label: "My Chats", icon: "chat", color: "#8EA2FF", match: (p: string) => p.startsWith("/me") },
-  { href: "/leaderboard", label: "Leaderboard", icon: "trophy", color: "#FF8FB1", match: (p: string) => p.startsWith("/leaderboard") },
+  { href: "/categories", label: "Categories", icon: "grid", color: "#7EE0B5", match: (p: string) => p.startsWith("/categories") || p.startsWith("/search") },
+  { href: "/leaderboard", label: "Yaaperboard", icon: "trophy", color: "#FF8FB1", match: (p: string) => p.startsWith("/leaderboard") },
+  { href: "/me", label: "My yaapi", icon: "chat", color: "#8EA2FF", match: (p: string) => p.startsWith("/me") },
 ] as const;
 
 // Full-screen pages that bring their own bottom bar (composer / spectator bar).

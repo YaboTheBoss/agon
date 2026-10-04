@@ -11,7 +11,7 @@ const display = Lilita_One({ subsets: ["latin"], weight: "400", variable: "--fon
 const body = Nunito({ subsets: ["latin"], weight: ["400", "600", "700", "800", "900"], variable: "--font-body" });
 
 export const metadata: Metadata = {
-  title: "Debate Battleground",
+  title: "yaapi",
   description: "Pick a side. Get paired. Argue nicely.",
 };
 

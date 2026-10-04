@@ -1,18 +1,19 @@
 "use client";
 
 /**
- * Feed — "Start chatting" (pick a side on a topic → get paired)
- *        "View convos"   (watch other people's chats via AI summaries)
+ * Feed — "Start yaaping" (pick a side on a topic → get paired)
+ *        "View yaaps"    (watch other people's chats via AI summaries)
  * The order of TOPICS stands in for the backend's personalised ranking
  * (popularity + your preferences + view history).
  */
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-import type { Choice, Convo, Mode, Topic } from "@/lib/data";
+import type { Convo, Mode } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
-import { AISummary, Avatar, Icon, Loading, ModeTag, PairingOverlay, SignInDialog, PollBar, StatusChip, card, displayFont, press, usePairing } from "@/components/ui";
+import { AISummary, Avatar, Icon, Loading, Logo, ModeTag, PairingOverlay, SignInDialog, StatusChip, card, displayFont, press, usePairing } from "@/components/ui";
+import { TopicCard } from "@/components/TopicCard";
 
 type Tab = "start" | "convos";
 
@@ -33,54 +34,6 @@ function ModeSwitch({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void 
         </button>
       ))}
     </div>
-  );
-}
-
-function TopicCard({ topic, onPick }: { topic: Topic; onPick: (t: Topic, choice: Choice) => void }) {
-  const { categoryBySlug, convosForTopic, myVotes } = useStore();
-  const cat = categoryBySlug(topic.category);
-  const chats = convosForTopic(topic.id).length;
-  const picked = (myVotes.get(topic.id) as Choice | undefined) ?? null;
-  return (
-    <li className={`${card} p-4`}>
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        {cat && (
-          <Link
-            href={`/categories/${cat.slug}`}
-            className="rounded-full border-2 border-[#1E1B2E] px-2 py-0.5 text-[11px] font-extrabold uppercase tracking-wide"
-            style={{ background: cat.color }}
-          >
-            {cat.name}
-          </Link>
-        )}
-        {topic.hot && (
-          <span className="flex items-center gap-0.5 text-xs font-extrabold text-[#D9480F]">
-            <Icon name="flame" className="h-3.5 w-3.5" /> Hot
-          </span>
-        )}
-        {topic.reason && (
-          <span className="flex min-w-0 items-center gap-1 truncate text-xs font-semibold text-[#5E5A72]">
-            <Icon name="sparkle" className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate">{topic.reason}</span>
-          </span>
-        )}
-      </div>
-
-      <h2 className="mb-3 text-lg font-black leading-snug text-[#1E1B2E]">{topic.title}</h2>
-
-      <PollBar topic={topic} onPick={(c) => onPick(topic, c)} picked={picked} showPct={topic.players > 0} />
-
-      <div className="mt-3 flex items-center justify-between text-xs font-semibold text-[#5E5A72]">
-        <span className="flex items-center gap-1">
-          <Icon name="users" className="h-3.5 w-3.5" /> {topic.players.toLocaleString()} picked a side
-        </span>
-        {chats > 0 && (
-          <Link href={`/topics/${topic.id}`} className="flex min-h-[32px] items-center gap-1 font-extrabold text-[#1E1B2E] underline decoration-2 underline-offset-2">
-            Watch {chats} chat{chats > 1 ? "s" : ""} <Icon name="arrow" className="h-3.5 w-3.5" />
-          </Link>
-        )}
-      </div>
-    </li>
   );
 }
 
@@ -219,11 +172,11 @@ export default function FeedPage() {
   return (
     <>
       <header className="sticky top-0 z-30 border-b-2 border-[#1E1B2E] bg-[#F6F3FF]/95 backdrop-blur">
-        <div className="mx-auto max-w-2xl px-4 pb-3 pt-3">
+        <div className="mx-auto max-w-2xl px-4 py-3">
           <div className="flex items-center gap-3">
-            <p className={`${displayFont} flex-1 text-[26px] leading-none`}>
-              Debate<span className="ml-1 inline-block -rotate-3 rounded-lg border-2 border-[#1E1B2E] bg-[#FFD43B] px-1.5 py-0.5 text-[20px]">Battle</span>
-            </p>
+            <h1 className="flex-1">
+              <Logo />
+            </h1>
             {!signedIn && (
               <button
                 onClick={() => setSigningIn("Sign in with Google to pick sides, chat and climb the leaderboard.")}
@@ -234,54 +187,56 @@ export default function FeedPage() {
             )}
             <ModeSwitch mode={mode} setMode={setMode} />
           </div>
-
-          <div role="tablist" aria-label="Feed" className="mt-3 grid grid-cols-2 gap-2">
-            {([
-              { id: "start", label: "Start chatting" },
-              { id: "convos", label: "View convos" },
-            ] as { id: Tab; label: string }[]).map((t) => (
-              <button
-                key={t.id}
-                role="tab"
-                aria-selected={tab === t.id}
-                onClick={() => setTab(t.id)}
-                className={`min-h-[44px] rounded-full border-2 border-[#1E1B2E] text-sm font-black transition-all ${
-                  tab === t.id ? "bg-[#1E1B2E] text-white" : "bg-white text-[#1E1B2E] shadow-[2px_2px_0_#1E1B2E]"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-2xl px-4 pt-5">
-        {!ready ? (
-          <Loading />
-        ) : tab === "start" ? (
-          <>
-            <p className="mb-3 text-sm font-semibold text-[#5E5A72]">
-              Pick a side and we&apos;ll pair you with someone from the other one.
-            </p>
-            <ul className="space-y-4">
-              {topics.map((t) => (
-                <TopicCard key={t.id} topic={t} onPick={(topic, choice) => startPairing({ topic, choice, mode })} />
-              ))}
-            </ul>
-          </>
-        ) : (
-          <>
-            <p className="mb-3 text-sm font-semibold text-[#5E5A72]">
-              Showing {mode === "comp" ? "Comp" : "Casual"} chats. Tap one to read it all.
-            </p>
-            <ul className="space-y-4">
-              {convos.map((c) => (
-                <ConvoCard key={c.id} c={c} />
-              ))}
-            </ul>
-          </>
-        )}
+      <main className="mx-auto max-w-2xl px-4 pt-4">
+        <div role="tablist" aria-label="Feed" className="grid grid-cols-2 gap-2">
+          {([
+            { id: "start", label: "Start yaaping" },
+            { id: "convos", label: "View yaaps" },
+          ] as { id: Tab; label: string }[]).map((t) => (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={tab === t.id}
+              onClick={() => setTab(t.id)}
+              className={`min-h-[44px] rounded-full border-2 border-[#1E1B2E] text-sm font-black transition-all ${
+                tab === t.id ? "bg-[#1E1B2E] text-white" : "bg-white text-[#1E1B2E] shadow-[2px_2px_0_#1E1B2E]"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-5">
+          {!ready ? (
+            <Loading />
+          ) : tab === "start" ? (
+            <>
+              <p className="mb-3 text-sm font-semibold text-[#5E5A72]">
+                Pick a side and we&apos;ll pair you with someone from the other one.
+              </p>
+              <ul className="space-y-4">
+                {topics.map((t) => (
+                  <TopicCard key={t.id} topic={t} onPick={(topic, choice) => startPairing({ topic, choice, mode })} />
+                ))}
+              </ul>
+            </>
+          ) : (
+            <>
+              <p className="mb-3 text-sm font-semibold text-[#5E5A72]">
+                Showing {mode === "comp" ? "Comp" : "Casual"} chats. Tap one to read it all.
+              </p>
+              <ul className="space-y-4">
+                {convos.map((c) => (
+                  <ConvoCard key={c.id} c={c} />
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
       </main>
 
       {/* Floating create button (sits above the bottom nav) */}

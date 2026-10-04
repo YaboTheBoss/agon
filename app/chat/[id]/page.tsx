@@ -58,7 +58,7 @@ export default function ChatPage() {
     return (
       <div className="mx-auto max-w-2xl p-6 text-center">
         <p className="font-semibold text-[#5E5A72]">This chat doesn&apos;t exist, or you&apos;re not in it.</p>
-        <Link href="/me" className="mt-3 inline-block font-extrabold underline">Back to My Chats</Link>
+        <Link href="/me" className="mt-3 inline-block font-extrabold underline">Back to My yaapi</Link>
       </div>
     );
   }
