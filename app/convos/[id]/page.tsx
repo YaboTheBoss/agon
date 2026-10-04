@@ -10,7 +10,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Choice } from "@/lib/data";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import {
@@ -19,10 +19,19 @@ import {
 
 export default function ConvoPage() {
   const { id } = useParams<{ id: string }>();
-  const { ready, convoById, convosForTopic, topicById, likedChatIds, myVotes, actions } = useStore();
+  const { ready, convoById, convosForTopic, topicById, likedChatIds, myVotes, actions, canTrack } = useStore();
   const convo = convoById(id);
   const topic = convo ? topicById.get(convo.topicId) : undefined;
   const { pairing, startPairing, cancelPairing } = usePairing();
+
+  // Opening a conversation counts as interest in its topic; staying 20 s counts as reading it.
+  const topicId = convo?.topicId;
+  useEffect(() => {
+    if (!canTrack || !topicId) return;
+    actions.trackEvent(topicId, "open");
+    const read = setTimeout(() => actions.trackEvent(topicId, "read"), 20_000);
+    return () => clearTimeout(read);
+  }, [canTrack, topicId, actions]);
   const { status } = useAuth();
   const [askSignIn, setAskSignIn] = useState(false);
 
