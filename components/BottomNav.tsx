@@ -4,6 +4,30 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon, press } from "@/components/ui";
 import { useStore } from "@/lib/store";
+import { pageMemory, usePageState } from "@/lib/page-memory";
+
+function TabLink({ tab, active, children }: { tab: typeof TABS[number]; active: boolean; children: React.ReactNode }) {
+  const [remembered] = usePageState(`tab:${tab.href}`, tab.href as string);
+  return (
+    <Link
+      href={active ? tab.href : remembered}
+      scroll={false}
+      aria-current={active ? "page" : undefined}
+      onNavigate={() => {
+        if (!active) return;
+        const memory = pageMemory();
+        memory.set(`tab:${tab.href}`, tab.href);
+        memory.set(`scroll:${tab.href}`, { y: 0, containers: {} });
+        if (tab.href === "/") memory.set("feed:tab", "start");
+        if (tab.href === "/me") memory.set("me:filter", "all");
+        if (tab.href === "/leaderboard") memory.set("leaderboard:sort", "likes");
+        window.dispatchEvent(new Event("yaapi:reset-scroll"));
+      }}
+      className={`flex min-h-[54px] flex-col items-center justify-center gap-0.5 rounded-full border-2 text-[11px] font-extrabold ${press} ${active ? "border-[#1E1B2E] text-[#1E1B2E] shadow-[2px_2px_0_#1E1B2E]" : "border-transparent text-[#5E5A72] hover:text-[#1E1B2E]"}`}
+      style={{ background: active ? tab.color : "transparent" }}
+    >{children}</Link>
+  );
+}
 
 const TABS = [
   { href: "/", label: "Feed", icon: "house", color: "#FFD43B", match: (p: string) => p === "/" || p.startsWith("/topics") },
@@ -28,19 +52,12 @@ export default function BottomNav() {
         aria-label="Main"
         className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
       >
-        <ul className="pointer-events-auto mx-auto flex max-w-md gap-1 rounded-full border-2 border-[#1E1B2E] bg-white p-1.5 shadow-[4px_4px_0_#1E1B2E]">
+        <ul className="bottom-nav-surface pointer-events-auto mx-auto flex max-w-md gap-1 rounded-full border-2 border-[#1E1B2E] bg-white p-1.5 shadow-[4px_4px_0_#1E1B2E]">
           {TABS.map((t) => {
             const active = t.match(pathname);
             return (
               <li key={t.href} className="min-w-0 flex-1">
-                <Link
-                  href={t.href}
-                  aria-current={active ? "page" : undefined}
-                  className={`flex min-h-[54px] flex-col items-center justify-center gap-0.5 rounded-full border-2 text-[11px] font-extrabold ${press} ${
-                    active ? "border-[#1E1B2E] text-[#1E1B2E] shadow-[2px_2px_0_#1E1B2E]" : "border-transparent text-[#5E5A72] hover:text-[#1E1B2E]"
-                  }`}
-                  style={{ background: active ? t.color : "transparent" }}
-                >
+                <TabLink tab={t} active={active}>
                   <span className="relative">
                     <Icon name={t.icon} className="h-5 w-5" />
                     {t.href === "/me" && notifications.length > 0 && (
@@ -54,7 +71,7 @@ export default function BottomNav() {
                     )}
                   </span>
                   <span className="max-w-full truncate px-1">{t.label}</span>
-                </Link>
+                </TabLink>
               </li>
             );
           })}

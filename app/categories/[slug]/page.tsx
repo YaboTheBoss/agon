@@ -8,10 +8,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { topicsForCategory, type Choice } from "@/lib/data";
 import { useStore } from "@/lib/store";
-import { Icon, Loading, PairingOverlay, PageHeader, PollBar, card, displayFont, usePairing } from "@/components/ui";
+import { CompetitiveTopicMark, Icon, Loading, PairingOverlay, PageHeader, PollBar, card, displayFont, usePairing } from "@/components/ui";
+import ModeSwitch from "@/components/ModeSwitch";
+import { usePlayMode } from "@/lib/play-mode";
 
 export default function CategoryPage() {
   const { slug } = useParams<{ slug: string }>();
+  const { mode } = usePlayMode();
   const { ready, topics: allTopics, categoryBySlug, convosForTopic, myVotes } = useStore();
   const cat = categoryBySlug(slug);
   const topics = topicsForCategory(allTopics, slug);
@@ -19,25 +22,25 @@ export default function CategoryPage() {
 
   if (!ready) {
     return (
-      <>
-        <PageHeader title="Category" back="/categories" />
+      <div className="feed-theme" data-mode={mode}>
+        <PageHeader className="feed-header" title="Category" back="/categories" right={<ModeSwitch />} />
         <Loading />
-      </>
+      </div>
     );
   }
 
   if (!cat) {
     return (
-      <>
-        <PageHeader title="Not found" back="/categories" />
+      <div className="feed-theme" data-mode={mode}>
+        <PageHeader className="feed-header" title="Not found" back="/categories" right={<ModeSwitch />} />
         <p className="p-6 text-center font-semibold text-[#5E5A72]">No such category.</p>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
-      <PageHeader back="/categories" title={cat.name} sub="Most popular right now" />
+    <div className="feed-theme" data-mode={mode}>
+      <PageHeader className="feed-header" back="/categories" title={cat.name} sub="Most popular right now" right={<ModeSwitch />} />
 
       <main className="mx-auto max-w-2xl px-4 pt-5">
         {/* banner */}
@@ -55,17 +58,18 @@ export default function CategoryPage() {
           {topics.map((t, i) => {
             const chats = convosForTopic(t.id).length;
             return (
-              <li key={t.id} className={`${card} p-4`}>
-                <div className="mb-3 flex gap-3">
-                  <span className={`${displayFont} w-8 shrink-0 text-3xl leading-none text-[#1E1B2E]/30`}>{i + 1}</span>
+              <li key={t.id} className={`${card} topic-card relative p-4`}>
+                {mode === "comp" && <CompetitiveTopicMark />}
+                <div className={`mb-3 flex gap-3 ${mode === "comp" ? "pr-7" : ""}`}>
+                  <span className={`${displayFont} w-8 shrink-0 text-3xl leading-none ${mode === "comp" ? "text-[#CBBFD9]" : "text-[#1E1B2E]/30"}`}>{i + 1}</span>
                   <span className="min-w-0">
                     <h2 className="text-lg font-black leading-snug">{t.title}</h2>
-                    <p className="mt-0.5 text-xs font-semibold text-[#5E5A72]">
+                    <p className="topic-meta mt-0.5 text-xs font-semibold text-[#5E5A72]">
                       {t.players.toLocaleString()} picked a side
                       {chats > 0 && (
                         <>
                           {" · "}
-                          <Link href={`/topics/${t.id}`} className="font-extrabold text-[#1E1B2E] underline decoration-2 underline-offset-2">
+                          <Link href={`/topics/${t.id}`} className="topic-convos font-extrabold text-[#1E1B2E] underline decoration-2 underline-offset-2">
                             {chats} chat{chats > 1 ? "s" : ""}
                           </Link>
                         </>
@@ -73,7 +77,7 @@ export default function CategoryPage() {
                     </p>
                   </span>
                 </div>
-                <PollBar topic={t} picked={(myVotes.get(t.id) as Choice | undefined) ?? null} onPick={(choice) => startPairing({ topic: t, choice, mode: "casual" })} />
+                <PollBar topic={t} picked={(myVotes.get(t.id) as Choice | undefined) ?? null} onPick={(choice) => startPairing({ topic: t, choice, mode })} />
               </li>
             );
           })}
@@ -82,6 +86,6 @@ export default function CategoryPage() {
       </main>
 
       {pairing && <PairingOverlay pairing={pairing} onCancel={cancelPairing} />}
-    </>
+    </div>
   );
 }

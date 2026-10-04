@@ -10,6 +10,142 @@ html {
   color-scheme: light;
 }
 
+/* Competitive arena: color changes only; every control keeps its geometry. */
+.app-shell,
+.feed-header,
+.feed-theme .topic-card,
+.feed-theme .topic-card h2,
+.feed-theme .topic-meta,
+.feed-theme .topic-convos,
+.feed-theme .topic-reason,
+.feed-theme .feed-description,
+.feed-theme .mode-switch,
+.feed-theme .mode-switch button,
+.feed-theme .feed-tabs button,
+.bottom-nav-surface,
+.bottom-nav-surface a {
+  transition: background-color 250ms ease, color 250ms ease, border-color 250ms ease;
+}
+
+html:has(.feed-theme[data-mode="comp"]),
+body:has(.feed-theme[data-mode="comp"]),
+.app-shell:has(.feed-theme[data-mode="comp"]) {
+  background: #21192e;
+}
+
+.feed-theme[data-mode="comp"] .feed-header {
+  background: rgb(33 25 46 / 97%);
+  border-bottom-color: #ffd43b;
+}
+
+.feed-theme[data-mode="comp"] .feed-header::after {
+  content: "";
+  position: absolute;
+  bottom: -3px;
+  left: 0;
+  width: 28%;
+  height: 6px;
+  background: #ffd43b;
+  clip-path: polygon(0 40%, 72% 40%, 68% 0, 100% 55%, 24% 55%, 28% 100%);
+  pointer-events: none;
+  animation: competitive-lightning 300ms ease-out both;
+}
+
+.feed-theme[data-mode="comp"] .mode-switch {
+  background: #342841;
+  border-color: #78628f;
+}
+
+.feed-theme[data-mode="comp"] .mode-switch button[aria-pressed="false"] {
+  color: #cbbfd9;
+}
+
+.feed-theme[data-mode="comp"] .mode-switch button[aria-pressed="true"] {
+  background: #ffd43b;
+  color: #21192e;
+}
+
+.feed-theme[data-mode="comp"] .topic-card {
+  background: #342841;
+  border-color: #78628f;
+}
+
+.feed-theme[data-mode="comp"] .topic-card:hover {
+  background: #3e304c;
+}
+
+.feed-theme[data-mode="comp"] .topic-card h2,
+.feed-theme[data-mode="comp"] .page-header-title,
+.feed-theme[data-mode="comp"] .topic-convos {
+  color: #f7f3ff;
+}
+
+.feed-theme[data-mode="comp"] .topic-meta,
+.feed-theme[data-mode="comp"] .page-header-sub,
+.feed-theme[data-mode="comp"] .topic-reason,
+.feed-theme[data-mode="comp"] .feed-description {
+  color: #cbbfd9;
+}
+
+.feed-theme[data-mode="comp"] .category-tile {
+  border-color: #1e1b2e;
+  color: #1e1b2e;
+}
+
+.feed-theme[data-mode="comp"] .category-tile .topic-meta {
+  color: #3a3650;
+}
+
+.feed-theme[data-mode="comp"] .topic-hot {
+  color: #ffb27a;
+}
+
+.feed-theme[data-mode="comp"] .topic-category,
+.feed-theme[data-mode="comp"] .feed-logo,
+.feed-theme[data-mode="comp"] .feed-create,
+.feed-theme[data-mode="comp"] .feed-signin {
+  color: #1e1b2e;
+}
+
+.feed-theme[data-mode="comp"] .feed-tabs button {
+  background: #342841;
+  border-color: #78628f;
+  color: #cbbfd9;
+}
+
+.feed-theme[data-mode="comp"] .feed-tabs button[aria-selected="true"] {
+  background: #514064;
+  color: #f7f3ff;
+}
+
+.app-shell:has(.feed-theme[data-mode="comp"]) .bottom-nav-surface {
+  background: #342841;
+  border-color: #78628f;
+}
+
+.app-shell:has(.feed-theme[data-mode="comp"]) .bottom-nav-surface a:not([aria-current="page"]) {
+  color: #cbbfd9;
+}
+
+@keyframes competitive-lightning {
+  from { transform: translateX(0); opacity: 0; }
+  20% { opacity: 1; }
+  to { transform: translateX(250%); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell,
+  .feed-theme *,
+  .bottom-nav-surface,
+  .bottom-nav-surface a {
+    transition: none;
+  }
+  .feed-theme[data-mode="comp"] .feed-header::after {
+    animation: none;
+    display: none;
+  }
+}
+
 @keyframes rise {
   from { opacity: 0; transform: translateY(18px); }
   to { opacity: 1; transform: none; }

@@ -7,12 +7,14 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
+import { usePageState } from "@/lib/page-memory";
 import { searchTopics } from "@/lib/search";
 import { useStore } from "@/lib/store";
 import { Loading, PageHeader, PairingOverlay, displayFont, usePairing } from "@/components/ui";
 import { SearchBox } from "@/components/SearchBox";
 import { TopicCard } from "@/components/TopicCard";
+import { usePlayMode } from "@/lib/play-mode";
 
 export default function SearchPage() {
   // useSearchParams needs a Suspense boundary in the App Router.
@@ -24,9 +26,10 @@ export default function SearchPage() {
 }
 
 function Search() {
+  const { mode } = usePlayMode();
   const router = useRouter();
   const initial = useSearchParams().get("q") ?? "";
-  const [q, setQ] = useState(initial);
+  const [q, setQ] = usePageState(`search:query:${initial}`, initial);
   const { ready, topics } = useStore();
   const { pairing, startPairing, cancelPairing } = usePairing();
 
@@ -37,6 +40,7 @@ function Search() {
     <>
       <PageHeader title="Search" back="/categories">
         <SearchBox
+          value={q}
           initial={initial}
           autoFocus={!initial}
           onChange={setQ}
@@ -57,7 +61,7 @@ function Search() {
             {results.length > 0 ? (
               <ul className="space-y-4">
                 {results.map((t) => (
-                  <TopicCard key={t.id} topic={t} onPick={(topic, choice) => startPairing({ topic, choice, mode: "casual" })} />
+                  <TopicCard key={t.id} topic={t} onPick={(topic, choice) => startPairing({ topic, choice, mode })} />
                 ))}
               </ul>
             ) : (

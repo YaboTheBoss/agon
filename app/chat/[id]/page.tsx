@@ -19,6 +19,7 @@ import { otherSide, sideLabel } from "@/lib/data";
 import type { JudgingResult } from "@/lib/judging/types";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
+import { pageMemory, usePageState } from "@/lib/page-memory";
 import { Avatar, BackButton, Icon, Loading, ModeTag, SignInCard, SIDE_COLOR, SIDE_TINT, displayFont, press } from "@/components/ui";
 
 export default function ChatPage() {
@@ -26,17 +27,24 @@ export default function ChatPage() {
   const { ready, myChatById, me, notifications, actions } = useStore();
   const { status, token } = useAuth();
   const chat = myChatById(id);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = usePageState(`chat:${id}:draft`, "");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLLIElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [now, setNow] = useState(0);
   const judgingStarted = useRef(false);
+  const scrollChat = useRef<string | null>(null);
+  const messageCount = chat?.messages.length;
 
   useEffect(() => {
+    if (!ready || messageCount === undefined) return;
+    if (scrollChat.current !== id) {
+      scrollChat.current = id;
+      if (pageMemory().get(`scroll:/chat/${id}`)) return;
+    }
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [chat?.messages.length]);
+  }, [messageCount, id, ready]);
 
   // Opening the chat clears its "you got paired" notification.
   const openChatId = chat?.id;
@@ -182,7 +190,7 @@ export default function ChatPage() {
       </header>
 
       {/* ---------- messages ---------- */}
-      <main className="flex-1 overflow-y-auto" aria-live="polite">
+      <main className="flex-1 overflow-y-auto" aria-live="polite" data-scroll-memory="messages">
         <ol className="mx-auto flex max-w-2xl flex-col gap-3 px-4 py-4" aria-label="Messages">
           {chat.messages.length === 0 && (
             <li className="mx-auto max-w-xs rounded-2xl border-2 border-dashed border-[#1E1B2E] bg-white px-4 py-3 text-center text-sm font-semibold text-[#3A3650]">

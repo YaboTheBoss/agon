@@ -9,7 +9,10 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import type { Choice, Convo, Mode, Topic } from "@/lib/data";
+import type { Choice, Convo, Topic } from "@/lib/data";
+import ModeSwitch from "@/components/ModeSwitch";
+import { usePlayMode } from "@/lib/play-mode";
+import { usePageState } from "@/lib/page-memory";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import { AISummary, Avatar, Icon, Loading, Logo, ModeTag, PairingOverlay, SignInDialog, StatusChip, card, displayFont, press, usePairing } from "@/components/ui";
@@ -18,25 +21,6 @@ import { requestAiUpkeep, requestTopicTagging } from "@/lib/tagging/client";
 
 type Tab = "start" | "convos";
 
-function ModeSwitch({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void }) {
-  return (
-    <div role="radiogroup" aria-label="Mode" className="flex rounded-full border-2 border-[#1E1B2E] bg-white p-0.5 shadow-[2px_2px_0_#1E1B2E]">
-      {(["casual", "comp"] as Mode[]).map((m) => (
-        <button
-          key={m}
-          role="radio"
-          aria-checked={mode === m}
-          onClick={() => setMode(m)}
-          className={`min-h-[36px] rounded-full px-3 text-xs font-extrabold transition-colors ${
-            mode === m ? (m === "casual" ? "bg-[#7EE0B5] text-[#1E1B2E]" : "bg-[#1E1B2E] text-[#FFD43B]") : "text-[#5E5A72]"
-          }`}
-        >
-          {m === "casual" ? "Casual" : "Comp"}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /**
  * The personalised feed, in the order it had when the feed opened: impressions
@@ -45,11 +29,11 @@ function ModeSwitch({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void 
  */
 function RankedTopics({ onPick }: { onPick: (t: Topic, choice: Choice) => void }) {
   const { feed } = useStore();
-  const [order] = useState(() => feed.map((t) => t.id));
+  const [order] = usePageState("feed:topic-order", () => feed.map((t) => t.id));
   const byId = new Map(feed.map((t) => [t.id, t]));
   const known = new Set(order);
   const justPosted = feed.filter((t) => t.mine && !known.has(t.id));
-  const list = [...justPosted, ...order.flatMap((id) => byId.get(id) ?? [])];
+  const list = [...justPosted, ...order.flatMap((id) => byId.get(id) ?? []), ...feed.filter((t) => !t.mine && !known.has(t.id))];
   return (
     <>
       {list.map((t) => (
@@ -69,9 +53,10 @@ const SEEN_AFTER_MS = 1_000;
 function RankedConvos() {
   const { convoFeed } = useStore();
   const { token } = useAuth();
-  const [order] = useState(() => convoFeed.map((c) => c.id));
+  const [order] = usePageState("feed:convo-order", () => convoFeed.map((c) => c.id));
   const byId = new Map(convoFeed.map((c) => [c.id, c]));
-  const list = order.flatMap((id) => byId.get(id) ?? []);
+  const known = new Set(order);
+  const list = [...order.flatMap((id) => byId.get(id) ?? []), ...convoFeed.filter((c) => !known.has(c.id))];
   // Lets finished conversations get their AI summary (throttled to every 5 min).
   useEffect(() => requestAiUpkeep(token), [token]);
   if (list.length === 0) {
@@ -163,10 +148,10 @@ function CreateSheet({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const { token } = useAuth();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [sideA, setSideA] = useState("");
-  const [sideB, setSideB] = useState("");
-  const [category, setCategory] = useState("trending");
+  const [title, setTitle] = usePageState("create:title", "");
+  const [sideA, setSideA] = usePageState("create:side-a", "");
+  const [sideB, setSideB] = usePageState("create:side-b", "");
+  const [category, setCategory] = usePageState("create:category", "trending");
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -176,6 +161,7 @@ function CreateSheet({ onClose, onCreated }: { onClose: () => void; onCreated: (
     actions
       .createTopic({ title: title.trim(), sideA: sideA.trim(), sideB: sideB.trim(), category })
       .then(() => {
+        setTitle(""); setSideA(""); setSideB("");
         requestTopicTagging(token);
         onCreated();
       })
@@ -246,40 +232,40 @@ function CreateSheet({ onClose, onCreated }: { onClose: () => void; onCreated: (
 }
 
 export default function FeedPage() {
-  const [tab, setTab] = useState<Tab>("start");
-  const [mode, setMode] = useState<Mode>("casual");
+  const [tab, setTab] = usePageState<Tab>("feed:tab", "start");
+  const { mode } = usePlayMode();
   const [creating, setCreating] = useState(false);
   const { pairing, startPairing, cancelPairing } = usePairing();
   const { ready, feedReady, convoFeedReady } = useStore();
   const { status } = useAuth();
   const signedIn = status === "signed-in";
   const [signingIn, setSigningIn] = useState<string | null>(null);
-
+  const competitive = tab === "start" && mode === "comp";
 
   return (
-    <>
-      <header className="sticky top-0 z-30 border-b-2 border-[#1E1B2E] bg-[#F6F3FF]/95 backdrop-blur">
+    <div className="feed-theme" data-mode={competitive ? "comp" : "casual"}>
+      <header className="feed-header sticky top-0 z-30 border-b-2 border-[#1E1B2E] bg-[#F6F3FF]/95 backdrop-blur">
         <div className="mx-auto max-w-2xl px-4 py-3">
           <div className="flex items-center gap-3">
             <h1 className="flex-1">
-              <Logo />
+              <Logo className="feed-logo text-[24px]" />
             </h1>
             {!signedIn && (
               <button
                 onClick={() => setSigningIn("Sign in with Google to pick sides, chat and climb the leaderboard.")}
-                className={`min-h-[40px] rounded-full border-2 border-[#1E1B2E] bg-white px-3 text-xs font-black shadow-[2px_2px_0_#1E1B2E] ${press}`}
+                className={`feed-signin min-h-[40px] rounded-full border-2 border-[#1E1B2E] bg-white px-3 text-xs font-black shadow-[2px_2px_0_#1E1B2E] ${press}`}
               >
                 Sign in
               </button>
             )}
             {/* Casual/Comp picks how you play; View yaaps shows both. */}
-            {tab === "start" && <ModeSwitch mode={mode} setMode={setMode} />}
+            {tab === "start" && <ModeSwitch />}
           </div>
         </div>
       </header>
 
       <main className="mx-auto max-w-2xl px-4 pt-4">
-        <div role="tablist" aria-label="Feed" className="grid grid-cols-2 gap-2">
+        <div role="tablist" aria-label="Feed" className="feed-tabs grid grid-cols-2 gap-2">
           {([
             { id: "start", label: "Start yaaping" },
             { id: "convos", label: "View yaaps" },
@@ -303,7 +289,7 @@ export default function FeedPage() {
             <Loading />
           ) : tab === "start" ? (
             <>
-              <p className="mb-3 text-sm font-semibold text-[#5E5A72]">
+              <p className="feed-description mb-3 text-sm font-semibold text-[#5E5A72]">
                 Pick a side and we&apos;ll pair you with someone from the other one.
               </p>
               <ul className="space-y-4">
@@ -330,7 +316,7 @@ export default function FeedPage() {
       {/* Floating create button (sits above the bottom nav) */}
       <button
         onClick={() => (signedIn ? setCreating(true) : setSigningIn("Sign in with Google to start a new debate."))}
-        className={`fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] right-4 z-30 flex min-h-[52px] items-center gap-1.5 rounded-full border-2 border-[#1E1B2E] bg-[#FFD43B] px-5 text-base font-black shadow-[4px_4px_0_#1E1B2E] sm:right-[max(1rem,calc(50%-21rem))] ${press}`}
+        className={`feed-create fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] right-4 z-30 flex min-h-[52px] items-center gap-1.5 rounded-full border-2 border-[#1E1B2E] bg-[#FFD43B] px-5 text-base font-black shadow-[4px_4px_0_#1E1B2E] sm:right-[max(1rem,calc(50%-21rem))] ${press}`}
       >
         <Icon name="plus" strokeWidth={3} /> Create
       </button>
@@ -349,6 +335,6 @@ export default function FeedPage() {
       )}
 
       {pairing && <PairingOverlay pairing={pairing} onCancel={cancelPairing} />}
-    </>
+    </div>
   );
 }

@@ -5,23 +5,28 @@
  * itself, `onSubmit` keeps the URL in sync). `onChange` lets a page filter live.
  */
 
-import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { type FormEvent } from "react";
+import { usePageState } from "@/lib/page-memory";
 import { Icon } from "@/components/ui";
 
 export function SearchBox({
   initial = "",
+  value,
   autoFocus = false,
   onChange,
   onSubmit,
 }: {
   initial?: string;
+  value?: string;
   autoFocus?: boolean;
   onChange?: (q: string) => void;
   onSubmit?: (q: string) => void;
 }) {
   const router = useRouter();
-  const [q, setQ] = useState(initial);
+  const pathname = usePathname();
+  const [draft, setQ] = usePageState(`search-box:${pathname}:${initial}`, initial);
+  const q = value ?? draft;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();

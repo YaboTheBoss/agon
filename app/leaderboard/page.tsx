@@ -4,7 +4,7 @@
  * Yaaperboard (leaderboard) — people with the most likes / most activity.
  */
 
-import { useState } from "react";
+import { usePageState } from "@/lib/page-memory";
 import { useStore } from "@/lib/store";
 import { Avatar, Icon, Loading, PageHeader, card, displayFont } from "@/components/ui";
 
@@ -17,7 +17,7 @@ const PODIUM = [
 ];
 
 export default function LeaderboardPage() {
-  const [sort, setSort] = useState<Sort>("likes");
+  const [sort, setSort] = usePageState<Sort>("leaderboard:sort", "likes");
   const { ready, leaders } = useStore();
   const ranked = [...leaders].sort((a, b) => b[sort] - a[sort]);
   const unit = sort === "likes" ? "likes" : "chats";

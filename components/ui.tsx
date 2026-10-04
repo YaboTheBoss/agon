@@ -74,6 +74,14 @@ export function Icon({ name, className = "h-5 w-5", strokeWidth = 2.2 }: { name:
 
 /* ---------------- avatar / tags ---------------- */
 
+export function CompetitiveTopicMark() {
+  return (
+    <span role="img" aria-label="Competitive mode" className="pointer-events-none absolute right-4 top-4 text-[#FFD43B]">
+      <Icon name="bolt" className="h-5 w-5" strokeWidth={2.6} />
+    </span>
+  );
+}
+
 const AVATAR_COLORS = ["#8EA2FF", "#FFB27A", "#7EE0B5", "#FF8FB1", "#FFD43B", "#B9A6FF", "#9BE7F0"];
 
 export function Avatar({ name, size = 36, color }: { name: string; size?: number; color?: string }) {
@@ -250,12 +258,14 @@ export function Logo({ className = "text-[24px]" }: { className?: string }) {
 
 /** Sticky page header. `children` render inside it, below the title row (e.g. a search box). */
 export function PageHeader({
+  className = "",
   title,
   back,
   right,
   sub,
   children,
 }: {
+  className?: string;
   title: ReactNode;
   back?: string;
   right?: ReactNode;
@@ -263,13 +273,13 @@ export function PageHeader({
   children?: ReactNode;
 }) {
   return (
-    <header className="sticky top-0 z-30 border-b-2 border-[#1E1B2E] bg-[#F6F3FF]/95 backdrop-blur">
+    <header className={`${className} sticky top-0 z-30 border-b-2 border-[#1E1B2E] bg-[#F6F3FF]/95 backdrop-blur`}>
       <div className="mx-auto max-w-2xl px-4 py-3">
         <div className="flex items-center gap-2">
           {back && <BackButton href={back} />}
           <div className="min-w-0 flex-1">
-            <h1 className={`${displayFont} truncate text-2xl leading-tight text-[#1E1B2E]`}>{title}</h1>
-            {sub && <div className="truncate text-xs font-semibold text-[#5E5A72]">{sub}</div>}
+            <h1 className={`${displayFont} page-header-title truncate text-2xl leading-tight text-[#1E1B2E]`}>{title}</h1>
+            {sub && <div className="page-header-sub truncate text-xs font-semibold text-[#5E5A72]">{sub}</div>}
           </div>
           {right}
         </div>

@@ -10,6 +10,7 @@ import { FormEvent, useState } from "react";
 import { otherSide, type Mode, type MyChat } from "@/lib/data";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
+import { usePageState } from "@/lib/page-memory";
 import { Avatar, Icon, Loading, ModeTag, PageHeader, SignInCard, SIDE_COLOR, StatusChip, card, displayFont, press } from "@/components/ui";
 
 type Filter = "all" | Mode;
@@ -37,11 +38,11 @@ function ChatStatus({ c }: { c: MyChat }) {
 }
 
 export default function MyChatsPage() {
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = usePageState<Filter>("me:filter", "all");
   const { ready, me, myChats, myTickets, actions } = useStore();
   const { status, signOut } = useAuth();
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState("");
+  const [editing, setEditing] = usePageState("me:editing", false);
+  const [name, setName] = usePageState("me:name", "");
   const [nameError, setNameError] = useState<string | null>(null);
   const chats = myChats.filter((c) => filter === "all" || c.mode === filter);
 

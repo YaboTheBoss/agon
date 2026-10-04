@@ -9,9 +9,11 @@ import { useParams } from "next/navigation";
 import { useEffect } from "react";
 import type { Choice } from "@/lib/data";
 import { useStore } from "@/lib/store";
+import { usePlayMode } from "@/lib/play-mode";
 import { Avatar, Icon, Loading, ModeTag, PairingOverlay, PageHeader, PollBar, StatusChip, card, press, usePairing } from "@/components/ui";
 
 export default function TopicPage() {
+  const { mode } = usePlayMode();
   const { id } = useParams<{ id: string }>();
   const { ready, topicById, categoryBySlug, convosForTopic, myVotes, canTrack, actions } = useStore();
   const topic = topicById.get(id);
@@ -55,7 +57,7 @@ export default function TopicPage() {
             {topic.players.toLocaleString()} people picked a side · {chats.length} chats
           </p>
           <div className="rounded-full bg-white">
-            <PollBar topic={topic} picked={(myVotes.get(topic.id) as Choice | undefined) ?? null} onPick={(choice) => startPairing({ topic, choice, mode: "casual" })} />
+            <PollBar topic={topic} picked={(myVotes.get(topic.id) as Choice | undefined) ?? null} onPick={(choice) => startPairing({ topic, choice, mode })} />
           </div>
         </section>
 
