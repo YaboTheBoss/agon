@@ -56,6 +56,17 @@ export function SpacetimeProvider({ children }: { children: ReactNode }) {
 const ms = (ts: { microsSinceUnixEpoch: bigint }) => Number(ts.microsSinceUnixEpoch / 1000n);
 const same = (a: Identity | undefined, b: Identity | undefined) => !!a && !!b && a.isEqual(b);
 const pct = (n: number, total: number) => (total === 0 ? 0 : Math.round((n / total) * 100));
+const panelVotes = (json: string): { a: number; b: number } | undefined => {
+  if (!json) return undefined;
+  try {
+    const counts = JSON.parse(json)?.panel?.voteCounts;
+    return typeof counts?.player_a === "number" && typeof counts?.player_b === "number"
+      ? { a: counts.player_a, b: counts.player_b }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 /* ---------------- data ---------------- */
 
@@ -97,6 +108,10 @@ function useBuildStore() {
   const createTopic = useReducer(reducers.createTopic);
   const setName = useReducer(reducers.setName);
   const completeProfile = useReducer(reducers.completeProfile);
+  const advanceMatch = useReducer(reducers.advanceMatch);
+  const passTurn = useReducer(reducers.passTurn);
+  const yieldEngagement = useReducer(reducers.yieldEngagement);
+  const submitJudgingResult = useReducer(reducers.submitJudgingResult);
 
   const derived = useMemo(() => {
     const playerByHex = new Map(playerRows.map((p) => [p.identity.toHexString(), p]));
@@ -169,7 +184,7 @@ function useBuildStore() {
         likes: c.likes,
         mode: c.mode as Mode,
         status: c.mode === "comp" ? (c.status as "live" | "ended") : undefined,
-        scores: c.mode === "comp" ? { a: c.scoreA, b: c.scoreB } : undefined,
+        scores: c.mode === "comp" ? (panelVotes(c.resultJson) ?? { a: 0, b: 0 }) : undefined,
         messages: (messagesByChat.get(c.id) ?? []).map((m) => ({ id: m.id.toString(), side: m.side as Side, text: m.text })),
         lastAt: ms(c.lastAt),
       }))
@@ -189,14 +204,32 @@ function useBuildStore() {
           mySide,
           mode: c.mode as Mode,
           status: c.mode === "comp" ? (c.status as "live" | "ended") : undefined,
-          scores: c.mode === "comp" ? { me: mySide === "a" ? c.scoreA : c.scoreB, them: mySide === "a" ? c.scoreB : c.scoreA } : undefined,
-          turn: last && same(last.sender, identity) ? ("them" as const) : ("me" as const),
+          scores: c.mode === "comp" ? (() => {
+            const votes = panelVotes(c.resultJson) ?? { a: 0, b: 0 };
+            return { me: mySide === "a" ? votes.a : votes.b, them: mySide === "a" ? votes.b : votes.a };
+          })() : undefined,
+          turn: c.mode === "comp"
+            ? (c.currentTurn === mySide ? ("me" as const) : ("them" as const))
+            : (last && same(last.sender, identity) ? ("them" as const) : ("me" as const)),
+          phase: c.mode === "comp" ? (c.phase as MyChat["phase"]) : undefined,
+          phaseStartedAt: c.mode === "comp" ? ms(c.phaseStartedAt) : undefined,
+          engagementStarter: c.mode === "comp" ? (c.engagementStarter as Side) : undefined,
+          remaining: c.mode === "comp" ? {
+            me: Number(mySide === "a" ? c.remainingA : c.remainingB) / 1000,
+            them: Number(mySide === "a" ? c.remainingB : c.remainingA) / 1000,
+          } : undefined,
+          submitted: c.mode === "comp" ? {
+            me: c.phase === "opening" ? (mySide === "a" ? c.openingA : c.openingB) : (mySide === "a" ? c.closingA : c.closingB),
+            them: c.phase === "opening" ? (mySide === "a" ? c.openingB : c.openingA) : (mySide === "a" ? c.closingB : c.closingA),
+          } : undefined,
+          yieldedSide: c.yieldedSide ? (c.yieldedSide as Side) : undefined,
+          resultJson: c.resultJson || undefined,
           messages: msgs.map((m) => ({
             id: m.id.toString(),
             from: same(m.sender, identity) ? ("me" as const) : ("them" as const),
             text: m.text,
             pts: m.pts,
-            why: m.why,
+            phase: m.phase,
           })),
           createdAt: ms(c.createdAt),
           lastAt: ms(c.lastAt),
@@ -248,8 +281,12 @@ function useBuildStore() {
       createTopic: (args: { title: string; sideA: string; sideB: string; category: string }) => createTopic(args),
       setName: (name: string) => setName({ name }),
       completeProfile: (username: string, displayName: string) => completeProfile({ username, displayName }),
+      advanceMatch: (chatId: string) => advanceMatch({ chatId: BigInt(chatId) }),
+      passTurn: (chatId: string) => passTurn({ chatId: BigInt(chatId) }),
+      yieldEngagement: (chatId: string) => yieldEngagement({ chatId: BigInt(chatId) }),
+      submitJudgingResult: (chatId: string, resultJson: string) => submitJudgingResult({ chatId: BigInt(chatId), resultJson }),
     }),
-    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName, completeProfile]
+    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName, completeProfile, advanceMatch, passTurn, yieldEngagement, submitJudgingResult]
   );
 
   return {

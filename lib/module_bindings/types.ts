@@ -37,6 +37,20 @@ export const Chat = __t.object("Chat", {
   likes: __t.u32(),
   msgCount: __t.u32(),
   summary: __t.string(),
+  phase: __t.string(),
+  phaseStartedAt: __t.timestamp(),
+  engagementStarter: __t.string(),
+  currentTurn: __t.string(),
+  remainingA: __t.u64(),
+  remainingB: __t.u64(),
+  openingA: __t.bool(),
+  openingB: __t.bool(),
+  closingA: __t.bool(),
+  closingB: __t.bool(),
+  yieldedSide: __t.string(),
+  passesA: __t.u32(),
+  passesB: __t.u32(),
+  resultJson: __t.string(),
   createdAt: __t.timestamp(),
   lastAt: __t.timestamp(),
 });
@@ -57,6 +71,7 @@ export const Message = __t.object("Message", {
   text: __t.string(),
   pts: __t.option(__t.i32()),
   why: __t.option(__t.string()),
+  phase: __t.string(),
   sentAt: __t.timestamp(),
 });
 export type Message = __Infer<typeof Message>;
@@ -83,6 +98,15 @@ export const Player = __t.object("Player", {
   membership: __t.string(),
 });
 export type Player = __Infer<typeof Player>;
+
+export const Submission = __t.object("Submission", {
+  id: __t.u64(),
+  chatId: __t.u64(),
+  side: __t.string(),
+  phase: __t.string(),
+  text: __t.string(),
+});
+export type Submission = __Infer<typeof Submission>;
 
 export const Ticket = __t.object("Ticket", {
   id: __t.u64(),

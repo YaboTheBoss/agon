@@ -6,23 +6,31 @@
 import { type Infer as __Infer } from "spacetimedb";
 
 // Import all reducer arg schemas
+import AdvanceMatchReducer from "../advance_match_reducer";
 import CompleteProfileReducer from "../complete_profile_reducer";
 import CreateTopicReducer from "../create_topic_reducer";
 import DismissNotificationsReducer from "../dismiss_notifications_reducer";
 import JoinQueueReducer from "../join_queue_reducer";
 import LeaveQueueReducer from "../leave_queue_reducer";
+import PassTurnReducer from "../pass_turn_reducer";
 import RemoveDemoDataReducer from "../remove_demo_data_reducer";
 import SendMessageReducer from "../send_message_reducer";
 import SetNameReducer from "../set_name_reducer";
+import SubmitJudgingResultReducer from "../submit_judging_result_reducer";
 import ToggleLikeReducer from "../toggle_like_reducer";
+import YieldEngagementReducer from "../yield_engagement_reducer";
 
+export type AdvanceMatchParams = __Infer<typeof AdvanceMatchReducer>;
 export type CompleteProfileParams = __Infer<typeof CompleteProfileReducer>;
 export type CreateTopicParams = __Infer<typeof CreateTopicReducer>;
 export type DismissNotificationsParams = __Infer<typeof DismissNotificationsReducer>;
 export type JoinQueueParams = __Infer<typeof JoinQueueReducer>;
 export type LeaveQueueParams = __Infer<typeof LeaveQueueReducer>;
+export type PassTurnParams = __Infer<typeof PassTurnReducer>;
 export type RemoveDemoDataParams = __Infer<typeof RemoveDemoDataReducer>;
 export type SendMessageParams = __Infer<typeof SendMessageReducer>;
 export type SetNameParams = __Infer<typeof SetNameReducer>;
+export type SubmitJudgingResultParams = __Infer<typeof SubmitJudgingResultReducer>;
 export type ToggleLikeParams = __Infer<typeof ToggleLikeReducer>;
+export type YieldEngagementParams = __Infer<typeof YieldEngagementReducer>;
 

@@ -5,7 +5,7 @@
  * from the other side → chat. Not everyone gets paired: a ticket waits until
  * someone compatible picks the same topic + mode, and the waiting player gets
  * a notification when that happens. Comp (challenge) chats are scored per
- * message and end after COMP_MESSAGE_LIMIT messages. Spectators can like chats.
+ * a phased, timed debate. Spectators can like chats.
  *
  * Choices and sides are plain strings: side "a" | "b", choice "a" | "b" | "either",
  * mode "casual" | "comp", chat status "live" | "ended".
@@ -123,6 +123,20 @@ const chat = table(
     likes: t.u32(),
     msgCount: t.u32(),
     summary: t.string(),
+    phase: t.string(),
+    phaseStartedAt: t.timestamp(),
+    engagementStarter: t.string(),
+    currentTurn: t.string(),
+    remainingA: t.u64(),
+    remainingB: t.u64(),
+    openingA: t.bool(),
+    openingB: t.bool(),
+    closingA: t.bool(),
+    closingB: t.bool(),
+    yieldedSide: t.string(),
+    passesA: t.u32(),
+    passesB: t.u32(),
+    resultJson: t.string(),
     createdAt: t.timestamp(),
     lastAt: t.timestamp(),
   }
@@ -138,7 +152,20 @@ const message = table(
     text: t.string(),
     pts: t.i32().optional(), // comp only
     why: t.string().optional(), // comp only
+    phase: t.string(),
     sentAt: t.timestamp(),
+  }
+);
+
+/** Hidden simultaneous opening/closing statements. */
+const submission = table(
+  { name: 'submission' },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    chatId: t.u64().index('btree'),
+    side: t.string(),
+    phase: t.string(),
+    text: t.string(),
   }
 );
 
@@ -168,7 +195,7 @@ const notification = table(
   }
 );
 
-const spacetimedb = schema({ player, admin, username, category, topic, vote, ticket, chat, message, chatLike, notification });
+const spacetimedb = schema({ player, admin, username, category, topic, vote, ticket, chat, message, submission, chatLike, notification });
 export default spacetimedb;
 
 export const ownNotifications = spacetimedb.clientVisibilityFilter.sql('SELECT * FROM notification WHERE recipient = :sender');
@@ -177,18 +204,12 @@ export type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
 
 /* ---------------- constants + helpers ---------------- */
 
-const COMP_MESSAGE_LIMIT = 12;
 const MICROS_PER_DAY = 86_400_000_000n;
-
-
-// TODO: replace with an AI moderator procedure. Rough keyword scoring for now.
-function scoreArgument(text: string): { pts: number; why: string } {
-  if (/\b(stupid|idiot|dumb|clown|loser)\b/i.test(text)) return { pts: -6, why: 'Personal attack' };
-  if (/\b(fair point|you're right|i agree|to be fair|good point|i see your point)\b/i.test(text)) return { pts: 11, why: 'Steelman' };
-  if (/\b(because|since|evidence|study|source|data|for example|e\.g\.)\b/i.test(text)) return { pts: text.length > 80 ? 10 : 8, why: 'Reasoning' };
-  if (text.trim().endsWith('?')) return { pts: 4, why: 'Good question' };
-  return { pts: text.length > 80 ? 6 : 3, why: 'Point made' };
-}
+const OPENING_MICROS = 120_000_000n;
+const RESPONSE_MICROS = 90_000_000n;
+const ENGAGEMENT_MICROS = 300_000_000n;
+const CLOSING_MICROS = 90_000_000n;
+type ChatRow = NonNullable<ReturnType<Ctx['db']['chat']['id']['find']>>;
 
 function isSide(s: string): s is 'a' | 'b' {
   return s === 'a' || s === 'b';
@@ -254,6 +275,7 @@ function sideForEither(ctx: Ctx, topicId: bigint): 'a' | 'b' {
 }
 
 function createChat(ctx: Ctx, topicId: bigint, mode: string, a: Identity, b: Identity) {
+  const starter = ctx.random() < 0.5 ? 'a' : 'b';
   const row = ctx.db.chat.insert({
     id: 0n,
     topicId,
@@ -266,6 +288,20 @@ function createChat(ctx: Ctx, topicId: bigint, mode: string, a: Identity, b: Ide
     likes: 0,
     msgCount: 0,
     summary: '',
+    phase: mode === 'comp' ? 'opening' : 'casual',
+    phaseStartedAt: ctx.timestamp,
+    engagementStarter: starter,
+    currentTurn: starter,
+    remainingA: ENGAGEMENT_MICROS,
+    remainingB: ENGAGEMENT_MICROS,
+    openingA: false,
+    openingB: false,
+    closingA: false,
+    closingB: false,
+    yieldedSide: '',
+    passesA: 0,
+    passesB: 0,
+    resultJson: '',
     createdAt: ctx.timestamp,
     lastAt: ctx.timestamp,
   });
@@ -285,34 +321,70 @@ function touchStreak(ctx: Ctx, who: Identity) {
   ctx.db.player.identity.update({ ...p, streak, lastActiveDay: today });
 }
 
-/** Append a message, score it in comp mode, and end comp chats at the limit. */
+function insertMessage(ctx: Ctx, chatId: bigint, sender: Identity, side: 'a' | 'b', text: string, phase: string) {
+  ctx.db.message.insert({ id: 0n, chatId, sender, side, text, pts: undefined, why: undefined, phase, sentAt: ctx.timestamp });
+}
+
+function sideIdentity(c: ChatRow, side: string) { return side === 'a' ? c.a : c.b; }
+function elapsed(ctx: Ctx, c: ChatRow) { return ctx.timestamp.microsSinceUnixEpoch - c.phaseStartedAt.microsSinceUnixEpoch; }
+
+function revealStatements(ctx: Ctx, c: ChatRow, phase: 'opening' | 'closing') {
+  const rows = [...ctx.db.submission.chatId.filter(c.id)].filter(s => s.phase === phase);
+  for (const side of ['a', 'b'] as const) {
+    const row = rows.find(s => s.side === side);
+    if (row) insertMessage(ctx, c.id, sideIdentity(c, side), side, row.text, phase);
+  }
+  for (const row of rows) ctx.db.submission.id.delete(row.id);
+  return rows.length;
+}
+
+function beginEngagement(ctx: Ctx, c: ChatRow) {
+  const revealed = revealStatements(ctx, c, 'opening');
+  ctx.db.chat.id.update({ ...c, msgCount: c.msgCount + revealed, phase: 'engagement', currentTurn: c.engagementStarter, phaseStartedAt: ctx.timestamp });
+}
+
+function beginClosing(ctx: Ctx, c: ChatRow) {
+  ctx.db.chat.id.update({ ...c, phase: 'closing', currentTurn: '', phaseStartedAt: ctx.timestamp });
+}
+
+function beginJudging(ctx: Ctx, c: ChatRow) {
+  const revealed = revealStatements(ctx, c, 'closing');
+  ctx.db.chat.id.update({ ...c, msgCount: c.msgCount + revealed, phase: 'judging', currentTurn: '', phaseStartedAt: ctx.timestamp });
+}
+
+function useTurnTime(ctx: Ctx, c: ChatRow, side: 'a' | 'b') {
+  const used = elapsed(ctx, c);
+  const remaining = side === 'a' ? c.remainingA : c.remainingB;
+  return remaining > used ? remaining - used : 0n;
+}
+
+function finishEngagementTurn(ctx: Ctx, c: ChatRow, side: 'a' | 'b', passed: boolean) {
+  const remaining = useTurnTime(ctx, c, side);
+  const passes = (side === 'a' ? c.passesA : c.passesB) + (passed ? 1 : 0);
+  const yielded = remaining === 0n || passes >= 2 ? side : c.yieldedSide;
+  const update: ChatRow = {
+    ...c,
+    remainingA: side === 'a' ? remaining : c.remainingA,
+    remainingB: side === 'b' ? remaining : c.remainingB,
+    passesA: side === 'a' ? (passed ? passes : 0) : c.passesA,
+    passesB: side === 'b' ? (passed ? passes : 0) : c.passesB,
+    yieldedSide: yielded,
+    currentTurn: otherSide(side),
+    phaseStartedAt: ctx.timestamp,
+  };
+  if (c.yieldedSide && side !== c.yieldedSide) beginClosing(ctx, update);
+  else ctx.db.chat.id.update(update);
+}
+
+/** Append a casual message or a public engagement response. */
 function postMessage(ctx: Ctx, chatId: bigint, sender: Identity, text: string) {
   const c = ctx.db.chat.id.find(chatId);
   if (!c) return;
   const side = c.a.isEqual(sender) ? 'a' : 'b';
-  const comp = c.mode === 'comp';
-  const scored = comp ? scoreArgument(text) : undefined;
-
-  ctx.db.message.insert({
-    id: 0n,
-    chatId,
-    sender,
-    side,
-    text,
-    pts: scored?.pts,
-    why: scored?.why,
-    sentAt: ctx.timestamp,
-  });
-
-  const msgCount = c.msgCount + 1;
-  ctx.db.chat.id.update({
-    ...c,
-    msgCount,
-    lastAt: ctx.timestamp,
-    scoreA: side === 'a' && scored ? Math.max(0, c.scoreA + scored.pts) : c.scoreA,
-    scoreB: side === 'b' && scored ? Math.max(0, c.scoreB + scored.pts) : c.scoreB,
-    status: comp && msgCount >= COMP_MESSAGE_LIMIT ? 'ended' : c.status,
-  });
+  insertMessage(ctx, chatId, sender, side, text, c.mode === 'comp' ? 'engagement' : 'casual');
+  const updated: ChatRow = { ...c, msgCount: c.msgCount + 1, lastAt: ctx.timestamp };
+  if (c.mode === 'comp') finishEngagementTurn(ctx, updated, side, false);
+  else ctx.db.chat.id.update(updated);
   touchStreak(ctx, sender);
 }
 
@@ -487,24 +559,89 @@ export const sendMessage = spacetimedb.reducer({ chatId: t.u64(), text: t.string
   requireProfile(ctx);
   const body = text.trim();
   if (!body) throw new SenderError('Message is empty');
-  if (body.length > 500) throw new SenderError('Message is too long');
   const c = ctx.db.chat.id.find(chatId);
   if (!c) throw new SenderError('Unknown chat');
+  const maxLength = c.mode === 'comp' && (c.phase === 'opening' || c.phase === 'closing') ? 6_000 : 500;
+  if (body.length > maxLength) throw new SenderError('Message is too long');
   const mine = c.a.isEqual(ctx.sender) || c.b.isEqual(ctx.sender);
   if (!mine) throw new SenderError('You are not in this chat');
-  if (c.status === 'ended') throw new SenderError('This challenge has ended');
+  if (c.status === 'ended') throw new SenderError('This debate has ended');
 
   if (c.mode === 'comp') {
-    // Comp is strictly turn-based so both sides get the same number of scored turns.
-    const sorted = [...ctx.db.message.chatId.filter(chatId)].sort((x, y) =>
-      x.sentAt.microsSinceUnixEpoch < y.sentAt.microsSinceUnixEpoch ? -1 : 1
-    );
-    const last = sorted[sorted.length - 1];
-    if (last && last.sender.isEqual(ctx.sender)) throw new SenderError("Wait for your opponent's reply");
+    const side = c.a.isEqual(ctx.sender) ? 'a' : 'b';
+    if (c.phase === 'opening' || c.phase === 'closing') {
+      const already = c.phase === 'opening'
+        ? (side === 'a' ? c.openingA : c.openingB)
+        : (side === 'a' ? c.closingA : c.closingB);
+      if (already) throw new SenderError(`Your ${c.phase} is already submitted`);
+      ctx.db.submission.insert({ id: 0n, chatId, side, phase: c.phase, text: body });
+      const updated: ChatRow = {
+        ...c,
+        openingA: c.phase === 'opening' && side === 'a' ? true : c.openingA,
+        openingB: c.phase === 'opening' && side === 'b' ? true : c.openingB,
+        closingA: c.phase === 'closing' && side === 'a' ? true : c.closingA,
+        closingB: c.phase === 'closing' && side === 'b' ? true : c.closingB,
+        lastAt: ctx.timestamp,
+      };
+      if (updated.openingA && updated.openingB && c.phase === 'opening') beginEngagement(ctx, updated);
+      else if (updated.closingA && updated.closingB && c.phase === 'closing') beginJudging(ctx, updated);
+      else ctx.db.chat.id.update(updated);
+      return;
+    }
+    if (c.phase !== 'engagement') throw new SenderError('Wait for the next phase');
+    if (c.currentTurn !== side) throw new SenderError("Wait for your opponent's reply");
   }
 
   postMessage(ctx, chatId, ctx.sender, body);
 });
+
+export const passTurn = spacetimedb.reducer({ chatId: t.u64() }, (ctx, { chatId }) => {
+  requireProfile(ctx);
+  const c = ctx.db.chat.id.find(chatId);
+  if (!c || c.mode !== 'comp' || c.phase !== 'engagement') throw new SenderError('Not in engagement');
+  const side = c.a.isEqual(ctx.sender) ? 'a' : c.b.isEqual(ctx.sender) ? 'b' : '';
+  if (!side || c.currentTurn !== side) throw new SenderError('It is not your turn');
+  finishEngagementTurn(ctx, c, side, true);
+});
+
+export const yieldEngagement = spacetimedb.reducer({ chatId: t.u64() }, (ctx, { chatId }) => {
+  requireProfile(ctx);
+  const c = ctx.db.chat.id.find(chatId);
+  if (!c || c.mode !== 'comp' || c.phase !== 'engagement') throw new SenderError('Not in engagement');
+  const side = c.a.isEqual(ctx.sender) ? 'a' : c.b.isEqual(ctx.sender) ? 'b' : '';
+  if (!side || c.currentTurn !== side) throw new SenderError('It is not your turn');
+  ctx.db.chat.id.update({ ...c, yieldedSide: side, currentTurn: otherSide(side), phaseStartedAt: ctx.timestamp });
+});
+
+/** Advances expired phases. Clients call this periodically; server time is authoritative. */
+export const advanceMatch = spacetimedb.reducer({ chatId: t.u64() }, (ctx, { chatId }) => {
+  requireProfile(ctx);
+  const c = ctx.db.chat.id.find(chatId);
+  if (!c || c.mode !== 'comp' || c.status === 'ended') return;
+  if (!c.a.isEqual(ctx.sender) && !c.b.isEqual(ctx.sender)) throw new SenderError('You are not in this chat');
+  const used = elapsed(ctx, c);
+  if (c.phase === 'opening' && used >= OPENING_MICROS) beginEngagement(ctx, c);
+  else if (c.phase === 'closing' && used >= CLOSING_MICROS) beginJudging(ctx, c);
+  else if (c.phase === 'engagement') {
+    const side = c.currentTurn as 'a' | 'b';
+    const remaining = side === 'a' ? c.remainingA : c.remainingB;
+    if (used >= RESPONSE_MICROS || used >= remaining) finishEngagementTurn(ctx, c, side, true);
+  }
+});
+
+/** Stores the signed-in participant's server-produced judging response. */
+export const submitJudgingResult = spacetimedb.reducer(
+  { chatId: t.u64(), resultJson: t.string() },
+  (ctx, { chatId, resultJson }) => {
+    requireProfile(ctx);
+    const c = ctx.db.chat.id.find(chatId);
+    if (!c || c.phase !== 'judging' || c.resultJson) throw new SenderError('This debate is not awaiting a result');
+    if (!c.a.isEqual(ctx.sender) && !c.b.isEqual(ctx.sender)) throw new SenderError('You are not in this chat');
+    if (resultJson.length > 1_000_000) throw new SenderError('Result is too large');
+    JSON.parse(resultJson);
+    ctx.db.chat.id.update({ ...c, resultJson, phase: 'ended', status: 'ended', lastAt: ctx.timestamp });
+  }
+);
 
 export const toggleLike = spacetimedb.reducer({ chatId: t.u64() }, (ctx, { chatId }) => {
   requireProfile(ctx);
