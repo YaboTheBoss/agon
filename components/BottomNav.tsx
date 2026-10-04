@@ -13,7 +13,7 @@ const TABS = [
 ] as const;
 
 // Full-screen pages that bring their own bottom bar (composer / spectator bar).
-const HIDDEN_ON = ["/convos/", "/chat/"];
+const HIDDEN_ON = ["/convos/", "/chat/", "/welcome"];
 
 export default function BottomNav() {
   const pathname = usePathname() ?? "/";

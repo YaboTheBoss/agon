@@ -13,6 +13,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { SpacetimeDBProvider, useReducer, useSpacetimeDB, useTable } from "spacetimedb/react";
 import type { Identity } from "spacetimedb";
 import { DbConnection, reducers, tables } from "@/lib/module_bindings";
+import { tokenExpired, useAuth } from "@/lib/auth";
 import type { Category, Choice, Convo, IconName, Leader, Mode, MyChat, Side, Topic } from "@/lib/data";
 
 export type QueuedTicket = { id: string; topicId: string; title: string; choice: Choice; mode: Mode; since: number };
@@ -20,34 +21,28 @@ export type PairNotification = { id: string; chatId: string; title: string; text
 
 const URI = process.env.NEXT_PUBLIC_SPACETIMEDB_URI ?? "ws://localhost:3010";
 const DB_NAME = process.env.NEXT_PUBLIC_SPACETIMEDB_DB ?? "agon";
-const TOKEN_KEY = `${URI}/${DB_NAME}/auth_token`;
-
-function readToken() {
-  try {
-    return localStorage.getItem(TOKEN_KEY) ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /* ---------------- connection ---------------- */
 
+/**
+ * Connects with the Google ID token when signed in, otherwise anonymously
+ * (browse-only — the server gives anonymous visitors no player row).
+ * Must sit under <AuthProvider>, which settles the token before we connect.
+ */
 export function SpacetimeProvider({ children }: { children: ReactNode }) {
+  const { token } = useAuth();
   const builder = useMemo(
     () =>
       DbConnection.builder()
         .withUri(URI)
         .withDatabaseName(DB_NAME)
-        .withToken(typeof window === "undefined" ? undefined : readToken())
-        .onConnect((_conn, _identity, token) => {
-          try {
-            localStorage.setItem(TOKEN_KEY, token);
-          } catch {
-            // private mode etc. — you just get a fresh identity next visit
-          }
-        })
-        .onConnectError((_ctx, err) => console.error("SpacetimeDB connect error", err)),
-    []
+        .withToken(token)
+        .onConnectError((_ctx, err) => {
+          console.error("SpacetimeDB connect error", err);
+          // An hour-old Google token can't reconnect; reloading lets AuthProvider refresh it.
+          if (token && tokenExpired(token)) window.location.reload();
+        }),
+    [token]
   );
   return (
     <SpacetimeDBProvider connectionBuilder={builder}>
@@ -90,6 +85,7 @@ function useBuildStore() {
   const [voteRows] = useTable(tables.vote);
   const [ticketRows] = useTable(tables.ticket);
   const [notificationRows] = useTable(tables.notification);
+  const [usernameRows] = useTable(tables.username);
 
   const ready = playersReady && categoriesReady && topicsReady && chatsReady && messagesReady;
 
@@ -100,6 +96,7 @@ function useBuildStore() {
   const toggleLike = useReducer(reducers.toggleLike);
   const createTopic = useReducer(reducers.createTopic);
   const setName = useReducer(reducers.setName);
+  const completeProfile = useReducer(reducers.completeProfile);
 
   const derived = useMemo(() => {
     const playerByHex = new Map(playerRows.map((p) => [p.identity.toHexString(), p]));
@@ -250,8 +247,9 @@ function useBuildStore() {
       toggleLike: (chatId: string) => toggleLike({ chatId: BigInt(chatId) }),
       createTopic: (args: { title: string; sideA: string; sideB: string; category: string }) => createTopic(args),
       setName: (name: string) => setName({ name }),
+      completeProfile: (username: string, displayName: string) => completeProfile({ username, displayName }),
     }),
-    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName]
+    [joinQueue, leaveQueue, dismissNotifications, sendMessage, toggleLike, createTopic, setName, completeProfile]
   );
 
   return {
@@ -260,6 +258,9 @@ function useBuildStore() {
     connectionError,
     identity,
     ...derived,
+    /** Signed in with Google but hasn't picked a username yet. */
+    needsProfile: !!derived.me && !derived.me.username,
+    usernameTaken: (handle: string) => usernameRows.some((u) => u.name === handle.toLowerCase()),
     convoById: (id: string) => derived.convos.find((c) => c.id === id),
     myChatById: (id: string) => derived.myChats.find((c) => c.id === id),
     categoryBySlug: (slug: string) => derived.categories.find((c) => c.slug === slug),

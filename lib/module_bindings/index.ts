@@ -34,6 +34,7 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
+import CompleteProfileReducer from "./complete_profile_reducer";
 import CreateTopicReducer from "./create_topic_reducer";
 import DismissNotificationsReducer from "./dismiss_notifications_reducer";
 import JoinQueueReducer from "./join_queue_reducer";
@@ -53,6 +54,7 @@ import NotificationRow from "./notification_table";
 import PlayerRow from "./player_table";
 import TicketRow from "./ticket_table";
 import TopicRow from "./topic_table";
+import UsernameRow from "./username_table";
 import VoteRow from "./vote_table";
 
 /** Type-only namespace exports for generated type groups. */
@@ -175,6 +177,21 @@ const tablesSchema = __schema({
       { name: 'topic_id_key', constraint: 'unique', columns: ['id'] },
     ],
   }, TopicRow),
+  username: __table({
+    name: 'username',
+    indexes: [
+      { accessor: 'name', name: 'username_name_idx_btree', algorithm: 'btree', columns: [
+        'name',
+      ] },
+      { accessor: 'owner', name: 'username_owner_idx_btree', algorithm: 'btree', columns: [
+        'owner',
+      ] },
+    ],
+    constraints: [
+      { name: 'username_name_key', constraint: 'unique', columns: ['name'] },
+      { name: 'username_owner_key', constraint: 'unique', columns: ['owner'] },
+    ],
+  }, UsernameRow),
   vote: __table({
     name: 'vote',
     indexes: [
@@ -194,6 +211,7 @@ const tablesSchema = __schema({
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
+  __reducerSchema("complete_profile", CompleteProfileReducer),
   __reducerSchema("create_topic", CreateTopicReducer),
   __reducerSchema("dismiss_notifications", DismissNotificationsReducer),
   __reducerSchema("join_queue", JoinQueueReducer),

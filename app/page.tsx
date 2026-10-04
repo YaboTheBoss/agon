@@ -11,7 +11,8 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 import type { Choice, Convo, Mode, Topic } from "@/lib/data";
 import { useStore } from "@/lib/store";
-import { AISummary, Avatar, Icon, Loading, ModeTag, PairingOverlay, PollBar, StatusChip, card, displayFont, press, usePairing } from "@/components/ui";
+import { useAuth } from "@/lib/auth";
+import { AISummary, Avatar, Icon, Loading, ModeTag, PairingOverlay, SignInDialog, PollBar, StatusChip, card, displayFont, press, usePairing } from "@/components/ui";
 
 type Tab = "start" | "convos";
 
@@ -209,6 +210,9 @@ export default function FeedPage() {
   const [creating, setCreating] = useState(false);
   const { pairing, startPairing, cancelPairing } = usePairing();
   const { ready, topics, convos: allConvos } = useStore();
+  const { status } = useAuth();
+  const signedIn = status === "signed-in";
+  const [signingIn, setSigningIn] = useState<string | null>(null);
 
   const convos = allConvos.filter((c) => c.mode === mode);
 
@@ -220,6 +224,14 @@ export default function FeedPage() {
             <p className={`${displayFont} flex-1 text-[26px] leading-none`}>
               Debate<span className="ml-1 inline-block -rotate-3 rounded-lg border-2 border-[#1E1B2E] bg-[#FFD43B] px-1.5 py-0.5 text-[20px]">Battle</span>
             </p>
+            {!signedIn && (
+              <button
+                onClick={() => setSigningIn("Sign in with Google to pick sides, chat and climb the leaderboard.")}
+                className={`min-h-[40px] rounded-full border-2 border-[#1E1B2E] bg-white px-3 text-xs font-black shadow-[2px_2px_0_#1E1B2E] ${press}`}
+              >
+                Sign in
+              </button>
+            )}
             <ModeSwitch mode={mode} setMode={setMode} />
           </div>
 
@@ -274,11 +286,13 @@ export default function FeedPage() {
 
       {/* Floating create button (sits above the bottom nav) */}
       <button
-        onClick={() => setCreating(true)}
+        onClick={() => (signedIn ? setCreating(true) : setSigningIn("Sign in with Google to start a new debate."))}
         className={`fixed bottom-[calc(6.5rem+env(safe-area-inset-bottom))] right-4 z-30 flex min-h-[52px] items-center gap-1.5 rounded-full border-2 border-[#1E1B2E] bg-[#FFD43B] px-5 text-base font-black shadow-[4px_4px_0_#1E1B2E] sm:right-[max(1rem,calc(50%-21rem))] ${press}`}
       >
         <Icon name="plus" strokeWidth={3} /> Create
       </button>
+
+      {signingIn && <SignInDialog why={signingIn} onClose={() => setSigningIn(null)} />}
 
       {creating && (
         <CreateSheet

@@ -15,7 +15,7 @@ export default function PairToast() {
   const pathname = usePathname() ?? "/";
   const { notifications, actions } = useStore();
   const n = notifications.find((x) => pathname !== `/chat/${x.chatId}`);
-  if (!n) return null;
+  if (!n || pathname.startsWith("/welcome")) return null;
 
   const more = notifications.length - 1;
 

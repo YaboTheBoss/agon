@@ -17,11 +17,13 @@ import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { otherSide, sideLabel } from "@/lib/data";
 import { useStore } from "@/lib/store";
-import { Avatar, BackButton, Icon, Loading, ModeTag, SIDE_COLOR, SIDE_TINT, ScoreBar, displayFont, press } from "@/components/ui";
+import { useAuth } from "@/lib/auth";
+import { Avatar, BackButton, Icon, Loading, ModeTag, SignInCard, SIDE_COLOR, SIDE_TINT, ScoreBar, displayFont, press } from "@/components/ui";
 
 export default function ChatPage() {
   const { id } = useParams<{ id: string }>();
   const { ready, myChatById, me, notifications, actions } = useStore();
+  const { status } = useAuth();
   const chat = myChatById(id);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -39,6 +41,14 @@ export default function ChatPage() {
   useEffect(() => {
     if (hasNotification && openChatId) actions.dismissNotifications(openChatId).catch(() => {});
   }, [hasNotification, openChatId, actions]);
+
+  if (status === "signed-out") {
+    return (
+      <main className="mx-auto max-w-2xl px-4 pt-6">
+        <SignInCard why="Sign in with Google to open your chats." />
+      </main>
+    );
+  }
 
   if (!ready) {
     return <Loading />;

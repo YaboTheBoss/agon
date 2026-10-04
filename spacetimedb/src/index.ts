@@ -14,6 +14,7 @@
 import { schema, table, t, SenderError, type InferSchema, type ReducerCtx } from 'spacetimedb/server';
 import { Identity } from 'spacetimedb';
 import { seed } from './seed';
+import { classifyLogin } from './auth';
 
 /* ---------------- tables ---------------- */
 
@@ -21,13 +22,23 @@ const player = table(
   { name: 'player', public: true },
   {
     identity: t.identity().primaryKey(),
-    name: t.string(),
+    name: t.string(), // display name
+    username: t.string(), // lowercase handle; "" until the profile is set up
     online: t.bool(),
     likes: t.u32(), // likes received across all chats
     debates: t.u32(), // chats joined
     streak: t.u32(), // consecutive active days
     lastActiveDay: t.u32(), // days since unix epoch
     membership: t.string(),
+  }
+);
+
+/** Claimed usernames. The primary key is what makes them unique. */
+const username = table(
+  { name: 'username', public: true },
+  {
+    name: t.string().primaryKey(), // lowercase
+    owner: t.identity().unique(),
   }
 );
 
@@ -149,7 +160,7 @@ const notification = table(
   }
 );
 
-const spacetimedb = schema({ player, category, topic, vote, ticket, chat, message, chatLike, notification });
+const spacetimedb = schema({ player, username, category, topic, vote, ticket, chat, message, chatLike, notification });
 export default spacetimedb;
 
 export const ownNotifications = spacetimedb.clientVisibilityFilter.sql('SELECT * FROM notification WHERE recipient = :sender');
@@ -161,8 +172,6 @@ export type Ctx = ReducerCtx<InferSchema<typeof spacetimedb>>;
 const COMP_MESSAGE_LIMIT = 12;
 const MICROS_PER_DAY = 86_400_000_000n;
 
-const GUEST_ADJ = ['Bold', 'Witty', 'Calm', 'Sharp', 'Sunny', 'Brave', 'Clever', 'Lucky', 'Swift', 'Quiet'];
-const GUEST_NOUN = ['Otter', 'Falcon', 'Panda', 'Fox', 'Koala', 'Heron', 'Lynx', 'Moose', 'Gecko', 'Owl'];
 
 // TODO: replace with an AI moderator procedure. Rough keyword scoring for now.
 function scoreArgument(text: string): { pts: number; why: string } {
@@ -181,10 +190,28 @@ function otherSide(s: string): 'a' | 'b' {
   return s === 'a' ? 'b' : 'a';
 }
 
+/** Every write needs a signed-in (Google) player. */
 function requirePlayer(ctx: Ctx) {
+  if (classifyLogin(ctx.senderAuth.jwt).kind !== 'google') throw new SenderError('Sign in with Google first');
   const p = ctx.db.player.identity.find(ctx.sender);
   if (!p) throw new SenderError('Unknown player');
   return p;
+}
+
+/** Playing (queueing, chatting, liking, posting) also needs a finished profile. */
+function requireProfile(ctx: Ctx) {
+  const p = requirePlayer(ctx);
+  if (!p.username) throw new SenderError('Finish setting up your profile first');
+  return p;
+}
+
+const USERNAME_RE = /^[a-z0-9_]{3,20}$/;
+const RESERVED_USERNAMES = new Set(['admin', 'agon', 'support', 'help', 'mod', 'moderator', 'system', 'me', 'you', 'null', 'undefined']);
+
+function cleanDisplayName(name: string) {
+  const trimmed = name.trim().replace(/\s+/g, ' ');
+  if (trimmed.length < 2 || trimmed.length > 24) throw new SenderError('Display names must be 2–24 characters');
+  return trimmed;
 }
 
 function bumpVotes(ctx: Ctx, topicId: bigint, choice: string, delta: 1 | -1) {
@@ -287,16 +314,25 @@ export const init = spacetimedb.init(ctx => {
   seed(ctx);
 });
 
+/**
+ * Google users get a player row (named from their Google profile the first
+ * time). Anonymous visitors may connect to browse but get no player row.
+ * A Google token minted for some other app is rejected outright.
+ */
 export const onConnect = spacetimedb.clientConnected(ctx => {
+  const login = classifyLogin(ctx.senderAuth.jwt);
+  if (login.kind === 'other-google') throw new SenderError('This Google sign-in is not for this app');
+  if (login.kind === 'anonymous') return;
+
   const p = ctx.db.player.identity.find(ctx.sender);
   if (p) {
     ctx.db.player.identity.update({ ...p, online: true });
     return;
   }
-  const name = `${GUEST_ADJ[ctx.random.integerInRange(0, GUEST_ADJ.length - 1)]} ${GUEST_NOUN[ctx.random.integerInRange(0, GUEST_NOUN.length - 1)]}`;
   ctx.db.player.insert({
     identity: ctx.sender,
-    name,
+    name: login.user.name,
+    username: '',
     online: true,
     likes: 0,
     debates: 0,
@@ -315,16 +351,34 @@ export const onDisconnect = spacetimedb.clientDisconnected(ctx => {
 /* ---------------- reducers ---------------- */
 
 export const setName = spacetimedb.reducer({ name: t.string() }, (ctx, { name }) => {
-  const trimmed = name.trim();
-  if (trimmed.length < 2 || trimmed.length > 24) throw new SenderError('Names must be 2–24 characters');
   const p = requirePlayer(ctx);
-  ctx.db.player.identity.update({ ...p, name: trimmed });
+  ctx.db.player.identity.update({ ...p, name: cleanDisplayName(name) });
 });
+
+/**
+ * First-time setup after signing in: claim a username and pick a display name.
+ * Usernames are lowercase letters, numbers and underscores, 3–20 long, and
+ * can't be changed here once set.
+ */
+export const completeProfile = spacetimedb.reducer(
+  { username: t.string(), displayName: t.string() },
+  (ctx, args) => {
+    const p = requirePlayer(ctx);
+    if (p.username) throw new SenderError('Your profile is already set up');
+    const handle = args.username.trim().replace(/^@/, '').toLowerCase();
+    if (!USERNAME_RE.test(handle)) throw new SenderError('Usernames are 3–20 letters, numbers or underscores');
+    if (RESERVED_USERNAMES.has(handle)) throw new SenderError('That username is reserved');
+    if (ctx.db.username.name.find(handle)) throw new SenderError('That username is taken');
+    const name = cleanDisplayName(args.displayName);
+    ctx.db.username.insert({ name: handle, owner: ctx.sender });
+    ctx.db.player.identity.update({ ...p, name, username: handle });
+  }
+);
 
 export const createTopic = spacetimedb.reducer(
   { title: t.string(), sideA: t.string(), sideB: t.string(), category: t.string() },
   (ctx, args) => {
-    requirePlayer(ctx);
+    requireProfile(ctx);
     const title = args.title.trim();
     const sideA = args.sideA.trim() || 'Yes';
     const sideB = args.sideB.trim() || 'No';
@@ -358,7 +412,7 @@ export const createTopic = spacetimedb.reducer(
 export const joinQueue = spacetimedb.reducer(
   { topicId: t.u64(), choice: t.string(), mode: t.string() },
   (ctx, { topicId, choice, mode }) => {
-    requirePlayer(ctx);
+    requireProfile(ctx);
     const tp = ctx.db.topic.id.find(topicId);
     if (!tp) throw new SenderError('Unknown topic');
     if (choice !== 'a' && choice !== 'b' && choice !== 'either') throw new SenderError('Bad choice');
@@ -406,18 +460,21 @@ export const joinQueue = spacetimedb.reducer(
 );
 
 export const leaveQueue = spacetimedb.reducer({ ticketId: t.u64() }, (ctx, { ticketId }) => {
+  requirePlayer(ctx);
   const tk = ctx.db.ticket.id.find(ticketId);
   if (tk && tk.identity.isEqual(ctx.sender)) ctx.db.ticket.id.delete(ticketId);
 });
 
 /** Clear your notifications for a chat (opened it, or dismissed the alert). */
 export const dismissNotifications = spacetimedb.reducer({ chatId: t.u64() }, (ctx, { chatId }) => {
+  requirePlayer(ctx);
   for (const n of [...ctx.db.notification.recipient.filter(ctx.sender)]) {
     if (n.chatId === chatId) ctx.db.notification.id.delete(n.id);
   }
 });
 
 export const sendMessage = spacetimedb.reducer({ chatId: t.u64(), text: t.string() }, (ctx, { chatId, text }) => {
+  requireProfile(ctx);
   const body = text.trim();
   if (!body) throw new SenderError('Message is empty');
   if (body.length > 500) throw new SenderError('Message is too long');
@@ -429,9 +486,10 @@ export const sendMessage = spacetimedb.reducer({ chatId: t.u64(), text: t.string
 
   if (c.mode === 'comp') {
     // Comp is strictly turn-based so both sides get the same number of scored turns.
-    const last = [...ctx.db.message.chatId.filter(chatId)].sort((x, y) =>
+    const sorted = [...ctx.db.message.chatId.filter(chatId)].sort((x, y) =>
       x.sentAt.microsSinceUnixEpoch < y.sentAt.microsSinceUnixEpoch ? -1 : 1
-    ).at(-1);
+    );
+    const last = sorted[sorted.length - 1];
     if (last && last.sender.isEqual(ctx.sender)) throw new SenderError("Wait for your opponent's reply");
   }
 
@@ -439,7 +497,7 @@ export const sendMessage = spacetimedb.reducer({ chatId: t.u64(), text: t.string
 });
 
 export const toggleLike = spacetimedb.reducer({ chatId: t.u64() }, (ctx, { chatId }) => {
-  requirePlayer(ctx);
+  requireProfile(ctx);
   const c = ctx.db.chat.id.find(chatId);
   if (!c) throw new SenderError('Unknown chat');
   const existing = [...ctx.db.chatLike.by_chat_liker.filter([chatId, ctx.sender])][0];
