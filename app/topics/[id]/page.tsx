@@ -6,13 +6,24 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { categoryBySlug, convosForTopic, topicById } from "@/lib/data";
-import { Avatar, Icon, ModeTag, PairingOverlay, PageHeader, PollBar, StatusChip, card, press, usePairing } from "@/components/ui";
+import type { Choice } from "@/lib/data";
+import { useStore } from "@/lib/store";
+import { Avatar, Icon, Loading, ModeTag, PairingOverlay, PageHeader, PollBar, StatusChip, card, press, usePairing } from "@/components/ui";
 
 export default function TopicPage() {
   const { id } = useParams<{ id: string }>();
-  const topic = topicById(id);
+  const { ready, topicById, categoryBySlug, convosForTopic, myVotes } = useStore();
+  const topic = topicById.get(id);
   const { pairing, startPairing, cancelPairing } = usePairing();
+
+  if (!ready) {
+    return (
+      <>
+        <PageHeader title="Chats on this topic" back="/" />
+        <Loading />
+      </>
+    );
+  }
 
   if (!topic) {
     return (
@@ -37,7 +48,7 @@ export default function TopicPage() {
             {topic.players.toLocaleString()} people picked a side · {chats.length} chats
           </p>
           <div className="rounded-full bg-white">
-            <PollBar topic={topic} onPick={(choice) => startPairing({ topic, choice, mode: "casual" })} />
+            <PollBar topic={topic} picked={(myVotes.get(topic.id) as Choice | undefined) ?? null} onPick={(choice) => startPairing({ topic, choice, mode: "casual" })} />
           </div>
         </section>
 

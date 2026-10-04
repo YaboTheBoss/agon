@@ -6,12 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:start": "spacetime start --listen-addr 127.0.0.1:3010",
+    "db:publish": "spacetime publish agon --server http://127.0.0.1:3010 --module-path spacetimedb --yes",
+    "db:reset": "spacetime publish agon --server http://127.0.0.1:3010 --module-path spacetimedb --delete-data=always --yes",
+    "db:generate": "spacetime generate --lang typescript --out-dir lib/module_bindings --module-path spacetimedb --yes",
+    "db:logs": "spacetime logs agon --server http://127.0.0.1:3010 -f"
   },
   "dependencies": {
     "next": "16.3.8",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "spacetimedb": "^2.10.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

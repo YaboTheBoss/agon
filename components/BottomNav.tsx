@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Icon, press } from "@/components/ui";
+import { useStore } from "@/lib/store";
 
 const TABS = [
   { href: "/", label: "Feed", icon: "house", color: "#FFD43B", match: (p: string) => p === "/" || p.startsWith("/topics") },
@@ -12,10 +13,11 @@ const TABS = [
 ] as const;
 
 // Full-screen pages that bring their own bottom bar (composer / spectator bar).
-const HIDDEN_ON = ["/arena", "/convos/", "/chat/"];
+const HIDDEN_ON = ["/convos/", "/chat/"];
 
 export default function BottomNav() {
   const pathname = usePathname() ?? "/";
+  const { notifications, myTickets } = useStore();
   if (HIDDEN_ON.some((p) => pathname.startsWith(p))) return null;
 
   return (
@@ -39,7 +41,18 @@ export default function BottomNav() {
                   }`}
                   style={{ background: active ? t.color : "transparent" }}
                 >
-                  <Icon name={t.icon} className="h-5 w-5" />
+                  <span className="relative">
+                    <Icon name={t.icon} className="h-5 w-5" />
+                    {t.href === "/me" && notifications.length > 0 && (
+                      <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-white bg-[#D6336C] px-0.5 text-[9px] font-black text-white">
+                        {notifications.length}
+                        <span className="sr-only"> new pairing{notifications.length > 1 ? "s" : ""}</span>
+                      </span>
+                    )}
+                    {t.href === "/me" && notifications.length === 0 && myTickets.length > 0 && (
+                      <span className="absolute -right-1.5 -top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#FFB27A]" aria-hidden="true" />
+                    )}
+                  </span>
                   <span className="max-w-full truncate px-1">{t.label}</span>
                 </Link>
               </li>

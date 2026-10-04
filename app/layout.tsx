@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Lilita_One, Nunito } from "next/font/google";
 import BottomNav from "@/components/BottomNav";
+import PairToast from "@/components/PairToast";
+import { SpacetimeProvider } from "@/lib/store";
 import "./globals.css";
 
 const display = Lilita_One({ subsets: ["latin"], weight: "400", variable: "--font-display" });
@@ -22,10 +24,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body className="bg-[#F6F3FF] font-[family-name:var(--font-body)] text-[#1E1B2E] antialiased">
-        <div className="min-h-[100dvh] bg-[#F6F3FF]">
-          {children}
-          <BottomNav />
-        </div>
+        <SpacetimeProvider>
+          <div className="min-h-[100dvh] bg-[#F6F3FF]">
+            {children}
+            <BottomNav />
+            <PairToast />
+          </div>
+        </SpacetimeProvider>
       </body>
     </html>
   );

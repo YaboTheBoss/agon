@@ -9,8 +9,9 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-import { CATEGORIES, CONVOS, TOPICS, categoryBySlug, convosForTopic, topicById, type Choice, type Mode, type Topic } from "@/lib/data";
-import { AISummary, Avatar, Icon, ModeTag, PairingOverlay, PollBar, StatusChip, card, displayFont, press, usePairing } from "@/components/ui";
+import type { Choice, Convo, Mode, Topic } from "@/lib/data";
+import { useStore } from "@/lib/store";
+import { AISummary, Avatar, Icon, Loading, ModeTag, PairingOverlay, PollBar, StatusChip, card, displayFont, press, usePairing } from "@/components/ui";
 
 type Tab = "start" | "convos";
 
@@ -35,8 +36,10 @@ function ModeSwitch({ mode, setMode }: { mode: Mode; setMode: (m: Mode) => void 
 }
 
 function TopicCard({ topic, onPick }: { topic: Topic; onPick: (t: Topic, choice: Choice) => void }) {
+  const { categoryBySlug, convosForTopic, myVotes } = useStore();
   const cat = categoryBySlug(topic.category);
   const chats = convosForTopic(topic.id).length;
+  const picked = (myVotes.get(topic.id) as Choice | undefined) ?? null;
   return (
     <li className={`${card} p-4`}>
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -64,7 +67,7 @@ function TopicCard({ topic, onPick }: { topic: Topic; onPick: (t: Topic, choice:
 
       <h2 className="mb-3 text-lg font-black leading-snug text-[#1E1B2E]">{topic.title}</h2>
 
-      <PollBar topic={topic} onPick={(c) => onPick(topic, c)} showPct={topic.players > 0} />
+      <PollBar topic={topic} onPick={(c) => onPick(topic, c)} picked={picked} showPct={topic.players > 0} />
 
       <div className="mt-3 flex items-center justify-between text-xs font-semibold text-[#5E5A72]">
         <span className="flex items-center gap-1">
@@ -80,9 +83,9 @@ function TopicCard({ topic, onPick }: { topic: Topic; onPick: (t: Topic, choice:
   );
 }
 
-function ConvoCard({ id }: { id: string }) {
-  const c = CONVOS.find((x) => x.id === id)!;
-  const t = topicById(c.topicId)!;
+function ConvoCard({ c }: { c: Convo }) {
+  const t = useStore().topicById.get(c.topicId);
+  if (!t) return null;
   return (
     <li>
       <Link href={`/convos/${c.id}`} className={`${card} ${press} block p-4`}>
@@ -107,13 +110,20 @@ function ConvoCard({ id }: { id: string }) {
           <Avatar name={c.b} size={28} color="#FFB27A" />
           <span className="truncate">{c.b} · {t.sideB}</span>
         </div>
-        <AISummary text={c.summary} />
+        {c.summary ? (
+          <AISummary text={c.summary} />
+        ) : (
+          <p className="truncate text-sm text-[#5E5A72]">“{c.messages.at(-1)?.text}”</p>
+        )}
       </Link>
     </li>
   );
 }
 
-function CreateSheet({ onClose, onCreate, mode }: { onClose: () => void; onCreate: (t: Topic) => void; mode: Mode }) {
+function CreateSheet({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const { categories, actions } = useStore();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [sideA, setSideA] = useState("");
   const [sideB, setSideB] = useState("");
@@ -121,19 +131,16 @@ function CreateSheet({ onClose, onCreate, mode }: { onClose: () => void; onCreat
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
-    // TODO: insert into Spacetime `topics` table
-    onCreate({
-      id: `new-${Date.now()}`,
-      title: title.trim(),
-      sideA: sideA.trim() || "Yes",
-      sideB: sideB.trim() || "No",
-      category,
-      aPct: 40,
-      ePct: 20,
-      players: 0,
-      reason: `You created this · ${mode === "comp" ? "Comp" : "Casual"}`,
-    });
+    if (!title.trim() || saving) return;
+    setSaving(true);
+    setError(null);
+    actions
+      .createTopic({ title: title.trim(), sideA: sideA.trim(), sideB: sideB.trim(), category })
+      .then(onCreated)
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : "Couldn't post that");
+        setSaving(false);
+      });
   };
 
   const field = "mt-1 block min-h-[48px] w-full rounded-2xl border-2 border-[#1E1B2E] bg-white px-4 text-[15px] font-semibold placeholder:font-normal placeholder:text-[#8A86A0] focus:outline-none focus:ring-4 focus:ring-[#FFD43B]";
@@ -172,14 +179,24 @@ function CreateSheet({ onClose, onCreate, mode }: { onClose: () => void; onCreat
         <label className="mt-3 block text-sm font-extrabold">
           Category
           <select className={field} value={category} onChange={(e) => setCategory(e.target.value)}>
-            {CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <option key={c.slug} value={c.slug}>{c.name}</option>
             ))}
           </select>
         </label>
 
-        <button type="submit" className={`mt-5 min-h-[52px] w-full rounded-full border-2 border-[#1E1B2E] bg-[#FFD43B] text-base font-black shadow-[4px_4px_0_#1E1B2E] ${press}`}>
-          Post it
+        {error && (
+          <p role="alert" className="mt-3 text-sm font-bold text-[#A3103F]">
+            {error}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={saving}
+          className={`mt-5 min-h-[52px] w-full rounded-full border-2 border-[#1E1B2E] bg-[#FFD43B] text-base font-black shadow-[4px_4px_0_#1E1B2E] disabled:opacity-60 ${press}`}
+        >
+          {saving ? "Posting…" : "Post it"}
         </button>
       </form>
     </div>
@@ -189,11 +206,11 @@ function CreateSheet({ onClose, onCreate, mode }: { onClose: () => void; onCreat
 export default function FeedPage() {
   const [tab, setTab] = useState<Tab>("start");
   const [mode, setMode] = useState<Mode>("casual");
-  const [topics, setTopics] = useState<Topic[]>(TOPICS);
   const [creating, setCreating] = useState(false);
   const { pairing, startPairing, cancelPairing } = usePairing();
+  const { ready, topics, convos: allConvos } = useStore();
 
-  const convos = CONVOS.filter((c) => c.mode === mode);
+  const convos = allConvos.filter((c) => c.mode === mode);
 
   return (
     <>
@@ -228,7 +245,9 @@ export default function FeedPage() {
       </header>
 
       <main className="mx-auto max-w-2xl px-4 pt-5">
-        {tab === "start" ? (
+        {!ready ? (
+          <Loading />
+        ) : tab === "start" ? (
           <>
             <p className="mb-3 text-sm font-semibold text-[#5E5A72]">
               Pick a side and we&apos;ll pair you with someone from the other one.
@@ -246,7 +265,7 @@ export default function FeedPage() {
             </p>
             <ul className="space-y-4">
               {convos.map((c) => (
-                <ConvoCard key={c.id} id={c.id} />
+                <ConvoCard key={c.id} c={c} />
               ))}
             </ul>
           </>
@@ -263,10 +282,8 @@ export default function FeedPage() {
 
       {creating && (
         <CreateSheet
-          mode={mode}
           onClose={() => setCreating(false)}
-          onCreate={(t) => {
-            setTopics((prev) => [t, ...prev]);
+          onCreated={() => {
             setCreating(false);
             setTab("start");
             window.scrollTo({ top: 0, behavior: "smooth" });

@@ -15,8 +15,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { bPct, otherSide, sideLabel, type Choice, type CompStatus, type IconName, type Mode, type Side, type Topic } from "@/lib/data";
+import { useStore } from "@/lib/store";
 
 /* ---------------- style tokens ---------------- */
 
@@ -255,6 +256,17 @@ export function BackButton({ href }: { href: string }) {
   );
 }
 
+/* ---------------- loading / empty ---------------- */
+
+export function Loading({ label = "Loading…" }: { label?: string }) {
+  const { connectionError, connected } = useStore();
+  return (
+    <p role="status" className="p-6 text-center text-sm font-semibold text-[#5E5A72]">
+      {connectionError || !connected ? "Connecting to the server…" : label}
+    </p>
+  );
+}
+
 /* ---------------- pick a side → get paired → chat ---------------- */
 
 export type Pairing = { topic: Pick<Topic, "id" | "title" | "sideA" | "sideB" | "aPct" | "ePct">; choice: Choice; mode: Mode };
@@ -264,36 +276,84 @@ export function usePairing() {
   return { pairing, startPairing: setPairing, cancelPairing: () => setPairing(null) };
 }
 
-const OPPONENTS = ["Leo", "Maya", "Kai", "Rosa", "Dev", "Ava", "Omar"];
+const OPEN_CHAT_AFTER_MS = 1200;
 
+/**
+ * Joins the queue for a topic. Two outcomes:
+ *  • someone compatible is waiting → "paired!" and we open the chat
+ *  • nobody is → you stay in the queue (even if you leave) and get a
+ *    notification once someone picks the other side
+ */
 export function PairingOverlay({ pairing, onCancel }: { pairing: Pairing; onCancel: () => void }) {
   const router = useRouter();
-  const [found, setFound] = useState(false);
-  const [opponent] = useState(() => OPPONENTS[Math.floor(Math.random() * OPPONENTS.length)]);
+  const { actions, myTickets, myChats } = useStore();
   const { topic, choice, mode } = pairing;
+  const started = useRef(false);
+  // Chats you already had when this overlay opened; anything new on this topic is the pairing.
+  const [chatsBefore] = useState(() => new Set(myChats.map((c) => c.id)));
+  const [joined, setJoined] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // "Either" → we drop you on whichever side has fewer people waiting.
-  const assigned: Side = choice === "either" ? (topic.aPct >= bPct(topic) ? "b" : "a") : choice;
+  // Join once (the ref survives React's dev-mode double effect).
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    actions
+      .joinQueue(topic.id, choice, mode)
+      .then(() => setJoined(true))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Couldn't join the queue"));
+  }, [actions, topic.id, choice, mode]);
+
+  // Decide from the rows themselves: a brand-new chat on this topic means we were paired,
+  // a ticket means we're waiting.
+  const newChat = joined
+    ? myChats.filter((c) => c.topic.id === topic.id && c.mode === mode && !chatsBefore.has(c.id)).sort((x, y) => y.createdAt - x.createdAt)[0]
+    : undefined;
+  const ticket = joined && !newChat ? myTickets.find((tk) => tk.topicId === topic.id && tk.mode === mode) : undefined;
+  const state: "joining" | "paired" | "queued" | "error" = error ? "error" : newChat ? "paired" : ticket ? "queued" : "joining";
+  const chatId = newChat?.id;
+
+  useEffect(() => {
+    if (!chatId) return;
+    router.prefetch(`/chat/${chatId}`);
+    const t = setTimeout(() => router.push(`/chat/${chatId}`), OPEN_CHAT_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [chatId, router]);
+
+  const close = () => {
+    if (state !== "paired") onCancel();
+  };
+  const leave = () => {
+    if (ticket) actions.leaveQueue(ticket.id).catch(() => {});
+    onCancel();
+  };
+
+  const assigned: Side = newChat ? newChat.mySide : choice === "either" ? (topic.aPct >= bPct(topic) ? "b" : "a") : choice;
   const mine = sideLabel(topic, assigned);
   const theirs = sideLabel(topic, otherSide(assigned));
+  const myShare = choice === "either" ? 0 : choice === "a" ? topic.aPct : bPct(topic);
+  const theirShare = choice === "either" ? 0 : choice === "a" ? bPct(topic) : topic.aPct;
+  const onMajority = myShare > theirShare;
+  const youChip = state !== "paired" && choice === "either" ? { text: "You · Either", bg: EITHER_COLOR } : { text: `You · ${mine}`, bg: SIDE_COLOR[assigned] };
 
-  // TODO: replace with Spacetime matchmaking: subscribe to a match row for this topic + opposite side.
-  useEffect(() => {
-    const qs = new URLSearchParams({ topic: topic.id, side: assigned, mode, opp: opponent, t: topic.title, sa: topic.sideA, sb: topic.sideB });
-    const href = `/chat/new?${qs.toString()}`;
-    router.prefetch(href);
-    const t1 = setTimeout(() => setFound(true), 1800);
-    const t2 = setTimeout(() => router.push(href), 2900);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, [router, topic.id, topic.title, topic.sideA, topic.sideB, assigned, mode, opponent]);
+  const heading = {
+    joining: "Finding your opponent…",
+    paired: "You got paired with another user!",
+    queued: "You're in the queue",
+    error: "Couldn't join",
+  }[state];
 
-  const youChip = !found && choice === "either" ? { text: "You · Either", bg: EITHER_COLOR } : { text: `You · ${mine}`, bg: SIDE_COLOR[assigned] };
+  const body = {
+    joining: choice === "either" ? "You picked Either, so you can fill whichever side needs a player." : `Looking for someone who picked “${theirs}”.`,
+    paired: newChat ? `You're arguing “${mine}” against ${newChat.opponent}. Opening the chat…` : "",
+    queued: `Nobody on ${choice === "either" ? "either side" : `“${theirs}”`} is waiting right now. We'll notify you when you get paired — you can keep browsing.${
+      onMajority ? ` Most people picked “${mine}”, so this one might take a while.` : ""
+    }`,
+    error: error ?? "",
+  }[state];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#1E1B2E]/40 p-3 sm:items-center" onClick={onCancel}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#1E1B2E]/40 p-3 sm:items-center" onClick={close}>
       <div
         role="dialog"
         aria-modal="true"
@@ -305,31 +365,34 @@ export function PairingOverlay({ pairing, onCancel }: { pairing: Pairing; onCanc
           <span className="max-w-[40%] truncate rounded-2xl border-2 border-[#1E1B2E] px-3 py-2 text-sm font-extrabold" style={{ background: youChip.bg }}>
             {youChip.text}
           </span>
-          <span className={`${displayFont} text-2xl text-[#1E1B2E] ${found ? "" : "motion-safe:animate-bounce"}`}>vs</span>
+          <span className={`${displayFont} text-2xl text-[#1E1B2E] ${state === "joining" ? "motion-safe:animate-bounce" : ""}`}>vs</span>
           <span
             className="max-w-[40%] truncate rounded-2xl border-2 border-dashed border-[#1E1B2E] px-3 py-2 text-sm font-extrabold"
-            style={{ background: found ? SIDE_COLOR[otherSide(assigned)] : "#FFFFFF" }}
+            style={{ background: newChat ? SIDE_COLOR[otherSide(assigned)] : "#FFFFFF" }}
           >
-            {found ? `${opponent} · ${theirs}` : choice === "either" ? "??? · anyone" : `??? · ${theirs}`}
+            {newChat ? `${newChat.opponent} · ${theirs}` : choice === "either" ? "??? · anyone" : `??? · ${theirs}`}
           </span>
         </div>
         <h2 id="pair-title" className={`${displayFont} mt-5 text-2xl text-[#1E1B2E]`}>
-          {found ? "Matched! Opening chat…" : "Finding your opponent…"}
+          {heading}
         </h2>
-        <p className="mt-1 text-sm text-[#5E5A72]">
-          {found
-            ? choice === "either"
-              ? `You're arguing “${mine}” this round. Have fun with it.`
-              : "Be nice. Be sharp. Have fun."
-            : choice === "either"
-              ? "You picked Either, so we'll put you on whichever side needs a player."
-              : `Looking for someone who picked “${theirs}”.`}
-        </p>
+        <p className="mt-1 text-sm text-[#5E5A72]">{body}</p>
         <p className="mt-3 line-clamp-2 text-sm font-bold text-[#1E1B2E]">{topic.title}</p>
         {mode === "comp" && <p className="mt-2 text-xs font-extrabold text-[#5E5A72]">Challenge mode · points on</p>}
-        {!found && (
+
+        {state === "queued" && (
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <button onClick={leave} className={`min-h-[44px] rounded-full border-2 border-[#1E1B2E] bg-white text-sm font-extrabold shadow-[3px_3px_0_#1E1B2E] ${press}`}>
+              Leave queue
+            </button>
+            <button onClick={onCancel} className={`min-h-[44px] rounded-full border-2 border-[#1E1B2E] bg-[#FFD43B] text-sm font-black shadow-[3px_3px_0_#1E1B2E] ${press}`}>
+              Got it
+            </button>
+          </div>
+        )}
+        {(state === "joining" || state === "error") && (
           <button onClick={onCancel} className={`mt-5 min-h-[44px] w-full rounded-full border-2 border-[#1E1B2E] bg-white text-sm font-extrabold shadow-[3px_3px_0_#1E1B2E] ${press}`}>
-            Cancel
+            Close
           </button>
         )}
       </div>

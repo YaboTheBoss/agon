@@ -9,19 +9,27 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
-import { convoById, convosForTopic, topicById } from "@/lib/data";
+import type { Choice } from "@/lib/data";
+import { useStore } from "@/lib/store";
 import {
-  AISummary, Avatar, Icon, ModeTag, PairingOverlay, PageHeader, PollBar, SIDE_COLOR, SIDE_TINT, ScoreBar, displayFont, press, usePairing,
+  AISummary, Avatar, Icon, Loading, ModeTag, PairingOverlay, PageHeader, PollBar, SIDE_COLOR, SIDE_TINT, ScoreBar, displayFont, press, usePairing,
 } from "@/components/ui";
 
 export default function ConvoPage() {
   const { id } = useParams<{ id: string }>();
+  const { ready, convoById, convosForTopic, topicById, likedChatIds, myVotes, actions } = useStore();
   const convo = convoById(id);
-  const topic = convo ? topicById(convo.topicId) : undefined;
-
-  const [liked, setLiked] = useState(false);
+  const topic = convo ? topicById.get(convo.topicId) : undefined;
   const { pairing, startPairing, cancelPairing } = usePairing();
+
+  if (!ready) {
+    return (
+      <>
+        <PageHeader title="Chat" back="/" />
+        <Loading />
+      </>
+    );
+  }
 
   if (!convo || !topic) {
     return (
@@ -34,7 +42,9 @@ export default function ConvoPage() {
 
   const comp = convo.mode === "comp";
   const others = convosForTopic(topic.id).length - 1;
-  const likes = convo.likes + (liked ? 1 : 0);
+  const liked = likedChatIds.has(convo.id);
+  const likes = convo.likes;
+  const nextUp = convo.messages.at(-1)?.side === "a" ? convo.b : convo.a;
 
   return (
     <div className="flex min-h-[100dvh] flex-col">
@@ -64,14 +74,14 @@ export default function ConvoPage() {
           </div>
         )}
 
-        <AISummary text={convo.summary} />
+        {convo.summary && <AISummary text={convo.summary} />}
 
         {/* transcript */}
         <ol className="space-y-3" aria-label="Conversation">
-          {convo.messages.map((m, i) => {
+          {convo.messages.map((m) => {
             const isA = m.side === "a";
             return (
-              <li key={i} className={`flex items-end gap-2 ${isA ? "" : "flex-row-reverse"}`}>
+              <li key={m.id} className={`flex items-end gap-2 ${isA ? "" : "flex-row-reverse"}`}>
                 <Avatar name={isA ? convo.a : convo.b} size={30} color={SIDE_COLOR[m.side]} />
                 <p
                   className={`max-w-[78%] rounded-[20px] border-2 border-[#1E1B2E] px-4 py-2.5 text-[15px] leading-snug shadow-[2px_2px_0_#1E1B2E] ${
@@ -94,7 +104,7 @@ export default function ConvoPage() {
                 <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#5E5A72]" style={{ animationDelay: `${d}ms` }} />
               ))}
             </span>
-            {convo.b} is typing
+            {nextUp}&apos;s turn
           </p>
         )}
 
@@ -114,10 +124,10 @@ export default function ConvoPage() {
         <div className="mx-auto flex max-w-2xl items-end gap-3 px-4 pt-3">
           <div className="min-w-0 flex-1">
             <p className={`${displayFont} mb-1.5 text-sm`}>Which side are you on? Pick one to jump in.</p>
-            <PollBar topic={topic} onPick={(choice) => startPairing({ topic, choice, mode: convo.mode })} />
+            <PollBar topic={topic} picked={(myVotes.get(topic.id) as Choice | undefined) ?? null} onPick={(choice) => startPairing({ topic, choice, mode: convo.mode })} />
           </div>
           <button
-            onClick={() => setLiked((l) => !l)}
+            onClick={() => actions.toggleLike(convo.id).catch(console.error)}
             aria-pressed={liked}
             aria-label={liked ? "Unlike conversation" : "Like conversation"}
             className={`flex h-[56px] min-w-[60px] shrink-0 flex-col items-center justify-center rounded-2xl border-2 border-[#1E1B2E] text-xs font-black shadow-[3px_3px_0_#1E1B2E] ${press} ${
