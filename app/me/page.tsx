@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * My yaapi ("My playground") — your likes, membership, and the chats you're in.
+ * My yaapi — your likes, membership, and the chats you're in.
  * Casual chats show whose turn it is; challenge (comp) chats show Live/Ended + score.
  */
 
@@ -48,7 +48,7 @@ export default function MyChatsPage() {
   if (status === "signed-out") {
     return (
       <>
-        <PageHeader title="My playground" />
+        <PageHeader title="My yaapi" />
         <main className="mx-auto max-w-2xl px-4 pt-5">
           <SignInCard why="Sign in with Google to keep your chats, likes and streak on every device." />
         </main>
@@ -59,7 +59,7 @@ export default function MyChatsPage() {
   if (!ready || !me) {
     return (
       <>
-        <PageHeader title="My playground" />
+        <PageHeader title="My yaapi" />
         <Loading />
       </>
     );
@@ -76,7 +76,7 @@ export default function MyChatsPage() {
 
   return (
     <>
-      <PageHeader title="My playground" />
+      <PageHeader title="My yaapi" />
 
       <main className="mx-auto max-w-2xl space-y-5 px-4 pt-5">
         {/* profile + stats */}
