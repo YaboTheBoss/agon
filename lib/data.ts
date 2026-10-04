@@ -9,6 +9,7 @@ export type Side = "a" | "b";
 export type Choice = Side | "either";
 /** Only challenge (comp) chats have a live/ended state. Casual chats are just chats. */
 export type CompStatus = "live" | "ended";
+export type CompPhase = "opening" | "engagement" | "closing" | "judging" | "ended";
 
 export type Topic = {
   id: string;
@@ -47,7 +48,7 @@ export type Convo = {
 };
 
 /** A conversation YOU are in (the typing view). */
-export type MyMsg = { id: string; from: "me" | "them"; text: string; pts?: number; why?: string };
+export type MyMsg = { id: string; from: "me" | "them"; text: string; phase?: string };
 export type MyChat = {
   id: string;
   topic: Pick<Topic, "id" | "title" | "sideA" | "sideB">;
@@ -57,6 +58,13 @@ export type MyChat = {
   status?: CompStatus; // comp only
   scores?: { me: number; them: number }; // comp only
   turn: "me" | "them";
+  phase?: CompPhase;
+  phaseStartedAt?: number;
+  engagementStarter?: Side;
+  remaining?: { me: number; them: number };
+  submitted?: { me: boolean; them: boolean };
+  yieldedSide?: Side;
+  resultJson?: string;
   messages: MyMsg[];
   createdAt: number;
   lastAt: number;

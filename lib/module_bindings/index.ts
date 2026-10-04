@@ -34,15 +34,19 @@ import {
 } from "spacetimedb";
 
 // Import all reducer arg schemas
+import AdvanceMatchReducer from "./advance_match_reducer";
 import CompleteProfileReducer from "./complete_profile_reducer";
 import CreateTopicReducer from "./create_topic_reducer";
 import DismissNotificationsReducer from "./dismiss_notifications_reducer";
 import JoinQueueReducer from "./join_queue_reducer";
 import LeaveQueueReducer from "./leave_queue_reducer";
+import PassTurnReducer from "./pass_turn_reducer";
 import RemoveDemoDataReducer from "./remove_demo_data_reducer";
 import SendMessageReducer from "./send_message_reducer";
 import SetNameReducer from "./set_name_reducer";
+import SubmitJudgingResultReducer from "./submit_judging_result_reducer";
 import ToggleLikeReducer from "./toggle_like_reducer";
+import YieldEngagementReducer from "./yield_engagement_reducer";
 
 // Import all procedure arg schemas
 
@@ -212,15 +216,19 @@ const tablesSchema = __schema({
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
+  __reducerSchema("advance_match", AdvanceMatchReducer),
   __reducerSchema("complete_profile", CompleteProfileReducer),
   __reducerSchema("create_topic", CreateTopicReducer),
   __reducerSchema("dismiss_notifications", DismissNotificationsReducer),
   __reducerSchema("join_queue", JoinQueueReducer),
   __reducerSchema("leave_queue", LeaveQueueReducer),
+  __reducerSchema("pass_turn", PassTurnReducer),
   __reducerSchema("remove_demo_data", RemoveDemoDataReducer),
   __reducerSchema("send_message", SendMessageReducer),
   __reducerSchema("set_name", SetNameReducer),
+  __reducerSchema("submit_judging_result", SubmitJudgingResultReducer),
   __reducerSchema("toggle_like", ToggleLikeReducer),
+  __reducerSchema("yield_engagement", YieldEngagementReducer),
 );
 
 /** The schema information for all procedures in this module. This is defined the same way as the procedures would have been defined in the server. */

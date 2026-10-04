@@ -16,6 +16,8 @@
     "db:logs:prod": "spacetime logs yaapi --server maincloud -f"
   },
   "dependencies": {
+    "@google/genai": "^2.27.0",
+    "google-auth-library": "^11.1.0",
     "next": "16.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8",

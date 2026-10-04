@@ -193,6 +193,20 @@ export function seed(ctx: Ctx) {
       likes: cv.likes,
       msgCount: cv.messages.length,
       summary: cv.summary,
+      phase: cv.mode === 'comp' ? (cv.status === 'ended' ? 'ended' : 'engagement') : 'casual',
+      phaseStartedAt: new Timestamp(start),
+      engagementStarter: 'a',
+      currentTurn: cv.messages.length % 2 === 0 ? 'a' : 'b',
+      remainingA: 300_000_000n,
+      remainingB: 300_000_000n,
+      openingA: true,
+      openingB: true,
+      closingA: false,
+      closingB: false,
+      yieldedSide: '',
+      passesA: 0,
+      passesB: 0,
+      resultJson: '',
       createdAt: new Timestamp(start),
       lastAt: new Timestamp(start + BigInt(cv.messages.length) * 60_000_000n),
     });
@@ -205,6 +219,7 @@ export function seed(ctx: Ctx) {
         text,
         pts: undefined,
         why: undefined,
+        phase: cv.mode === 'comp' ? 'engagement' : 'casual',
         sentAt: new Timestamp(start + BigInt(mi + 1) * 60_000_000n),
       });
     });

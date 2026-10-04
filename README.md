@@ -51,6 +51,8 @@ The first publish seeds categories, topics, demo players and a few chats.
 
 - **Sign-in:** Google. The Google ID token is the SpacetimeDB login, so the same Google account is the same player on every device (`lib/auth.tsx` on the client, `spacetimedb/src/auth.ts` on the server). Signed-out visitors connect anonymously and can browse; every write reducer requires a Google sign-in for this app's client ID.
 - **Matchmaking:** `joinQueue` records your vote and pairs you with someone waiting on the other side of the same topic + mode (exact opposites first, then "Either" pickers, oldest first). If nobody's waiting you stay in the queue — even after closing the app — and get a "You got paired with another user!" notification when someone matches you. Not everyone gets paired: when one side is the big majority, some of them just wait.
-- **Comp mode:** turn-based, each message is scored server-side (keyword heuristic for now — an AI moderator is the planned upgrade), and the chat ends after 12 messages.
+- **Comp mode:** two-minute hidden openings, alternating engagement with five-minute player clocks and 90-second response clocks, 90-second hidden closings, then a multi-judge Gemini panel. Complete responses are revealed only after submission; openings and closings reveal simultaneously.
+
+After changing the competitive schema, republish with `npm run db:reset` in local development and regenerate bindings with `npm run db:generate`. Production migrations require an intentional data-migration plan rather than deleting data.
 
 Config (optional, see `.env.example`): `NEXT_PUBLIC_SPACETIMEDB_URI`, `NEXT_PUBLIC_SPACETIMEDB_DB`.
