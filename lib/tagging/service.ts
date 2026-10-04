@@ -1,9 +1,11 @@
 /**
  * AI upkeep, run on the server (app/api/tagging). Connects to SpacetimeDB as the
  * registered AI service and, each run:
- *  - tags topics that only have keyword tags (set_topic_features), and
- *  - writes summaries for ended conversations that have none (set_chat_summary).
- * The database accepts both writes from this identity only.
+ *  - tags topics that only have keyword tags (set_topic_features),
+ *  - scores comp chats every 6 messages (award_points),
+ *  - records ended comp chats' result + feedback once fully scored (set_chat_result), and
+ *  - writes summaries for ended casual chats (set_chat_summary).
+ * The database accepts these writes from this identity only, and re-checks every limit.
  *
  * Callers can trigger a run but can't influence the result: topics and the tag
  * list are read from the database, never from the request.
@@ -12,11 +14,15 @@
 import "server-only";
 
 import { DbConnection } from "@/lib/module_bindings";
-import type { ConvoForSummary, TagOption, TopicForTagging } from "./prompt";
+import type { BatchForScoring, ConvoForFeedback, ConvoForSummary, ScoringMessage, TagOption, TopicForTagging } from "./prompt";
+import type { BatchAward, Feedback } from "./validate";
 import type { TopicFeatures } from "./validate";
 
 export type GenerateFeatures = (topic: TopicForTagging, tags: TagOption[]) => Promise<TopicFeatures>;
 export type GenerateSummary = (convo: ConvoForSummary) => Promise<string>;
+export type GenerateAwards = (batch: BatchForScoring) => Promise<BatchAward[]>;
+export type GenerateFeedback = (convo: ConvoForFeedback) => Promise<Feedback>;
+export type ScoringRun = { batches: { chatId: string; from: number; through: number; awarded: number }[]; results: { chatId: string; winner: string }[]; failed: { chatId: string; error: string }[] };
 export type SummaryRun = { summarized: { chatId: string; summary: string }[]; failed: { chatId: string; error: string }[] };
 export type TaggingRun = { tagged: { topicId: string; title: string; tags: string[]; entities: string[] }[]; failed: { topicId: string; error: string }[] };
 
@@ -25,6 +31,11 @@ export class TaggingNotConfiguredError extends Error {}
 /** Topics tagged / conversations summarised per request. Each is one model call, so this bounds request time and cost. */
 export const MAX_TOPICS_PER_RUN = 3;
 export const MAX_SUMMARIES_PER_RUN = 2;
+export const MAX_BATCHES_PER_RUN = 4;
+export const MAX_RESULTS_PER_RUN = 2;
+/** Must match spacetimedb/src/points.ts. */
+export const BATCH_SIZE = 6;
+const CONTEXT_MESSAGES = 20;
 const CONNECT_TIMEOUT_MS = 10_000;
 
 function settings() {
@@ -66,6 +77,8 @@ export function withServiceConnection<T>(work: (conn: DbConnection) => Promise<T
             "SELECT * FROM chat",
             "SELECT * FROM message",
             "SELECT * FROM player",
+            "SELECT * FROM point_award",
+            "SELECT * FROM score_state",
           ]);
       })
       .onConnectError((_ctx, err) => fail(err))
@@ -113,9 +126,17 @@ async function tagTopicsWith(conn: DbConnection, generate: GenerateFeatures, lim
 /** Ended conversations with messages and no summary yet, most recently active first. */
 export function pendingSummaries(conn: DbConnection, limit = MAX_SUMMARIES_PER_RUN) {
   return [...conn.db.chat.iter()]
-    .filter((c) => c.status === "ended" && !c.summary && c.msgCount > 0)
+    // Comp chats get their summary with the result (set_chat_result).
+    .filter((c) => c.mode === "casual" && c.status === "ended" && !c.summary && c.msgCount > 0)
     .sort((x, y) => (x.lastAt.microsSinceUnixEpoch > y.lastAt.microsSinceUnixEpoch ? -1 : 1))
     .slice(0, limit);
+}
+
+/** A chat's messages in send order (same order the database scores in). */
+function orderedMessages(conn: DbConnection, chatId: bigint) {
+  return [...conn.db.message.chatId.filter(chatId)].sort((x, y) =>
+    x.sentAt.microsSinceUnixEpoch === y.sentAt.microsSinceUnixEpoch ? Number(x.id - y.id) : x.sentAt.microsSinceUnixEpoch < y.sentAt.microsSinceUnixEpoch ? -1 : 1
+  );
 }
 
 /** The transcript and context the summariser needs for one conversation. */
@@ -124,9 +145,7 @@ export function convoForSummary(conn: DbConnection, chatId: bigint): ConvoForSum
   const topic = c && conn.db.topic.id.find(c.topicId);
   if (!c || !topic) return undefined;
   const name = (side: string) => conn.db.player.identity.find(side === "a" ? c.a : c.b)?.name ?? (side === "a" ? "Side A" : "Side B");
-  const lines = [...conn.db.message.chatId.filter(chatId)]
-    .sort((x, y) => (x.sentAt.microsSinceUnixEpoch === y.sentAt.microsSinceUnixEpoch ? Number(x.id - y.id) : x.sentAt.microsSinceUnixEpoch < y.sentAt.microsSinceUnixEpoch ? -1 : 1))
-    .map((m) => `${name(m.side)}: ${m.text}`);
+  const lines = orderedMessages(conn, chatId).map((m) => `${name(m.side)}: ${m.text}`);
   return { topic: topic.title, sideA: { name: name("a"), label: topic.sideA }, sideB: { name: name("b"), label: topic.sideB }, lines };
 }
 
@@ -151,10 +170,100 @@ export function summarizeEndedChats(generate: GenerateSummary, limit = MAX_SUMMA
   return withServiceConnection((conn) => summarizeWith(conn, generate, limit));
 }
 
-/** One connection, both jobs: tag new topics and summarise finished conversations. */
-export function runAiUpkeep(gen: { features: GenerateFeatures; summary: GenerateSummary }): Promise<{ topics: TaggingRun; summaries: SummaryRun }> {
+/* ---------------- comp points ---------------- */
+
+/** Messages [from, through) still to score for a comp chat: full batches while live, the remainder once ended. */
+function nextBatch(conn: DbConnection, chatId: bigint, scored: number) {
+  const c = conn.db.chat.id.find(chatId);
+  if (!c || c.mode !== "comp") return undefined;
+  const total = orderedMessages(conn, chatId).length;
+  const unscored = total - scored;
+  if (unscored >= BATCH_SIZE) return { from: scored, through: scored + BATCH_SIZE };
+  if (c.status === "ended" && unscored > 0) return { from: scored, through: total };
+  return undefined;
+}
+
+function batchForScoring(conn: DbConnection, chatId: bigint, from: number, through: number): BatchForScoring | undefined {
+  const c = conn.db.chat.id.find(chatId);
+  const topic = c && conn.db.topic.id.find(c.topicId);
+  if (!c || !topic) return undefined;
+  const name = (side: string) => conn.db.player.identity.find(side === "a" ? c.a : c.b)?.name ?? (side === "a" ? "Side A" : "Side B");
+  const msgs = orderedMessages(conn, chatId).map(
+    (m): ScoringMessage => ({ id: m.id.toString(), side: m.side === "a" ? "a" : "b", name: name(m.side), text: m.text })
+  );
+  return {
+    topic: topic.title,
+    sideA: { name: name("a"), label: topic.sideA },
+    sideB: { name: name("b"), label: topic.sideB },
+    context: msgs.slice(Math.max(0, from - CONTEXT_MESSAGES), from),
+    alreadyCredited: [...conn.db.pointAward.chatId.filter(chatId)].map((a) => ({ side: a.side === "a" ? ("a" as const) : ("b" as const), reason: a.reason })),
+    batch: msgs.slice(from, through),
+  };
+}
+
+async function scoreWith(conn: DbConnection, gen: { awards: GenerateAwards; feedback: GenerateFeedback }): Promise<ScoringRun> {
+  const run: ScoringRun = { batches: [], results: [], failed: [] };
+  // Only chats with a scoring record: comp chats from before points existed keep their old scores/verdicts.
+  const comps = [...conn.db.chat.iter()].filter((c) => c.mode === "comp" && c.msgCount > 0 && conn.db.scoreState.chatId.find(c.id));
+
+  // 1. Batches, oldest-waiting chats first. Track progress locally: the subscription may lag our own writes.
+  let budget = MAX_BATCHES_PER_RUN;
+  for (const c of comps.sort((x, y) => (x.lastAt.microsSinceUnixEpoch < y.lastAt.microsSinceUnixEpoch ? -1 : 1))) {
+    let scored = conn.db.scoreState.chatId.find(c.id)?.scoredCount ?? 0;
+    for (let range = nextBatch(conn, c.id, scored); range && budget > 0; range = nextBatch(conn, c.id, scored)) {
+      budget--;
+      try {
+        const batch = batchForScoring(conn, c.id, range.from, range.through);
+        if (!batch) break;
+        const awards = await gen.awards(batch);
+        await conn.reducers.awardPoints({
+          chatId: c.id,
+          fromCount: range.from,
+          throughCount: range.through,
+          awards: awards.map((a) => ({ messageId: BigInt(a.messageId), points: a.points, reason: a.reason })),
+        });
+        run.batches.push({ chatId: c.id.toString(), from: range.from, through: range.through, awarded: awards.reduce((n, a) => n + a.points, 0) });
+        scored = range.through;
+      } catch (error) {
+        run.failed.push({ chatId: c.id.toString(), error: error instanceof Error ? error.message : String(error) });
+        break;
+      }
+    }
+  }
+
+  // 2. Results for ended comp chats whose every message is scored.
+  let results = MAX_RESULTS_PER_RUN;
+  for (const c of comps) {
+    if (results <= 0) break;
+    const state = conn.db.scoreState.chatId.find(c.id);
+    const fresh = conn.db.chat.id.find(c.id) ?? c;
+    if (fresh.status !== "ended" || state?.finalized || (state?.scoredCount ?? 0) !== orderedMessages(conn, c.id).length) continue;
+    results--;
+    try {
+      const convo = convoForSummary(conn, c.id);
+      if (!convo) continue;
+      const scores = { a: fresh.scoreA, b: fresh.scoreB };
+      const winner = scores.a > scores.b ? "a" : scores.b > scores.a ? "b" : "tie";
+      const f = await gen.feedback({ ...convo, scores, winner });
+      await conn.reducers.setChatResult({ chatId: c.id, summary: f.summary, feedbackA: f.feedbackA, feedbackB: f.feedbackB });
+      run.results.push({ chatId: c.id.toString(), winner });
+    } catch (error) {
+      run.failed.push({ chatId: c.id.toString(), error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return run;
+}
+
+/** One connection, all jobs: tag new topics, score comp chats, record results, summarise finished casual chats. */
+export function runAiUpkeep(gen: {
+  features: GenerateFeatures;
+  summary: GenerateSummary;
+  awards: GenerateAwards;
+  feedback: GenerateFeedback;
+}): Promise<{ topics: TaggingRun; scoring: ScoringRun; summaries: SummaryRun }> {
   return withServiceConnection(async (conn) => ({
     topics: await tagTopicsWith(conn, gen.features, MAX_TOPICS_PER_RUN),
+    scoring: await scoreWith(conn, gen),
     summaries: await summarizeWith(conn, gen.summary, MAX_SUMMARIES_PER_RUN),
   }));
 }

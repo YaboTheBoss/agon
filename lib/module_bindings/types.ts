@@ -24,6 +24,13 @@ export const Affinity = __t.object("Affinity", {
 });
 export type Affinity = __Infer<typeof Affinity>;
 
+export const AwardInput = __t.object("AwardInput", {
+  messageId: __t.u64(),
+  points: __t.u32(),
+  reason: __t.string(),
+});
+export type AwardInput = __Infer<typeof AwardInput>;
+
 export const CasualClock = __t.object("CasualClock", {
   chatId: __t.u64(),
   firstMessageAt: __t.timestamp(),
@@ -159,11 +166,29 @@ export const Player = __t.object("Player", {
 });
 export type Player = __Infer<typeof Player>;
 
+export const PointAward = __t.object("PointAward", {
+  id: __t.u64(),
+  chatId: __t.u64(),
+  side: __t.string(),
+  messageId: __t.u64(),
+  points: __t.u32(),
+  reason: __t.string(),
+  createdAt: __t.timestamp(),
+});
+export type PointAward = __Infer<typeof PointAward>;
+
 export const PruneJob = __t.object("PruneJob", {
   scheduledId: __t.u64(),
   scheduledAt: __t.scheduleAt(),
 });
 export type PruneJob = __Infer<typeof PruneJob>;
+
+export const ScoreState = __t.object("ScoreState", {
+  chatId: __t.u64(),
+  scoredCount: __t.u32(),
+  finalized: __t.bool(),
+});
+export type ScoreState = __Infer<typeof ScoreState>;
 
 export const Service = __t.object("Service", {
   identity: __t.identity(),

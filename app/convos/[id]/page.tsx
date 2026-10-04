@@ -9,12 +9,13 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import type { Choice } from "@/lib/data";
+import type { Choice, Side } from "@/lib/data";
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth";
 import {
-  AISummary, Avatar, Icon, Loading, ModeTag, PairingOverlay, PageHeader, PollBar, SIDE_COLOR, SIDE_TINT, ScoreBar, SignInDialog, displayFont, press, usePairing,
+  AISummary, Avatar, CompResultCard, Icon, Loading, ModeTag, PairingOverlay, PageHeader, PointsBreakdown, PollBar, SIDE_COLOR, SIDE_TINT, ScoreBar, SignInDialog,
+  displayFont, press, usePairing,
 } from "@/components/ui";
 
 export default function ConvoPage() {
@@ -23,6 +24,7 @@ export default function ConvoPage() {
   const convo = convoById(id);
   const topic = convo ? topicById.get(convo.topicId) : undefined;
   const { pairing, startPairing, cancelPairing } = usePairing();
+  const [breakdownSide, setBreakdownSide] = useState<Side | null>(null);
 
   // Opening a conversation (and staying 20 s to read it) is recorded for this
   // conversation and counts as interest in its topic.
@@ -58,7 +60,7 @@ export default function ConvoPage() {
   const others = convosForTopic(topic.id).length - 1;
   const liked = likedChatIds.has(convo.id);
   const likes = convo.likes;
-  const nextUp = convo.messages.at(-1)?.side === "a" ? convo.b : convo.a;
+  const names: Record<Side, string> = { a: convo.a, b: convo.b };
 
   return (
     <div className="flex min-h-[100dvh] flex-col">
@@ -70,6 +72,7 @@ export default function ConvoPage() {
             status={convo.status}
             left={{ name: convo.a, side: "a", label: topic.sideA, score: convo.scores.a }}
             right={{ name: convo.b, side: "b", label: topic.sideB, score: convo.scores.b }}
+            onPickSide={setBreakdownSide}
           />
         ) : (
           <div className="flex items-center justify-between gap-2 text-xs font-extrabold">
@@ -89,6 +92,7 @@ export default function ConvoPage() {
         )}
 
         {convo.status === "ended" && convo.summary && <AISummary text={convo.summary} />}
+        {comp && convo.result && <CompResultCard result={convo.result} names={names} />}
 
         {/* transcript */}
         <ol className="space-y-3" aria-label="Conversation">
@@ -118,7 +122,7 @@ export default function ConvoPage() {
                 <span key={d} className="h-1.5 w-1.5 animate-bounce rounded-full bg-[#5E5A72]" style={{ animationDelay: `${d}ms` }} />
               ))}
             </span>
-            {nextUp}&apos;s turn
+            Live · points update every 6 messages
           </p>
         )}
 
@@ -155,6 +159,9 @@ export default function ConvoPage() {
       </div>
 
       {pairing && <PairingOverlay pairing={pairing} onCancel={cancelPairing} />}
+      {breakdownSide && convo.awards && convo.scores && (
+        <PointsBreakdown awards={convo.awards} names={names} totals={convo.scores} initialSide={breakdownSide} onClose={() => setBreakdownSide(null)} />
+      )}
       {askSignIn && <SignInDialog why="Sign in with Google to like conversations." onClose={() => setAskSignIn(false)} />}
     </div>
   );
